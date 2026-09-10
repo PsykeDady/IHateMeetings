@@ -1,0 +1,20 @@
+meeting:
+  date: 2026-08-26
+
+speakers:
+  Federica Orsini:
+    first_speaker: true
+  Giovanni Taranto:
+    responds_to_first_speaker: true
+  Sonia Greco:
+    phrases:
+      - "pero Fede voglio aggiungere solo una cosa"
+  Davide:
+    semantic_hints:
+      - "promuovero in STAG"
+      - "modifiche aggiornate"
+      - "stasera"
+  Andrea Berardis:
+    phrases:
+      - "io stamattina ho fatto un giro con Davide"
+

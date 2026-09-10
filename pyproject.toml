@@ -1,0 +1,33 @@
+[project]
+name = "ihatemeetings"
+version = "0.1.0"
+description = "Local-first intelligent meeting transcription."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "IHateMeetings contributors" }
+]
+keywords = ["transcription", "meetings", "asr", "diarization", "local-first"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0"
+]
+
+[project.scripts]
+ihm = "ihatemeetings.cli.main:main"
+ihatemeetings = "ihatemeetings.cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
