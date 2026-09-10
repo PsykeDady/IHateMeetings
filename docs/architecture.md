@@ -13,7 +13,15 @@ IHateMeetings is designed as a staged local-first pipeline:
 9. Optional reasoning over uncertain regions.
 10. Transcript reconstruction and export.
 
-Phase 0 implements only the bootstrap surface: package structure, CLI, configuration precedence hooks, platform detection and doctor diagnostics. Expensive ML integrations are intentionally deferred until the foundation is tested.
+Phase 1 implements media inspection, normalized temporary audio, ASR and export. Its concrete flow is:
+
+```text
+source -> MediaInspection/MediaInfo -> temporary 16 kHz mono PCM
+       -> ASRBackend/ASRResult -> Transcript schema v1 -> exporters
+```
+
+`FasterWhisperBackend` is the only ASR implementation in Phase 1. It immediately converts third-party segments into typed immutable IHateMeetings models. Exporters only consume the canonical `Transcript`, never backend output. FFprobe and ASR evidence are stored separately under `raw/`; normalized audio is temporary until cache/resume arrives in Phase 5.
+
+CPU INT8 is a required and tested selection path. CUDA FP16 is selected only when CTranslate2 reports an accessible CUDA device. Manual device and compute-type overrides remain available.
 
 External ML libraries must be wrapped behind internal interfaces before use, so third-party response shapes do not leak through the application.
-

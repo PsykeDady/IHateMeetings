@@ -16,4 +16,3 @@ def test_format_timestamp_with_milliseconds():
 def test_format_timestamp_rejects_negative_values():
     with pytest.raises(ValueError):
         format_timestamp(-0.1)
-

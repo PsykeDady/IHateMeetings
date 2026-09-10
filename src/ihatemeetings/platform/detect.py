@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import platform as py_platform
 import shutil
@@ -38,6 +39,7 @@ class PlatformInfo:
     cuda_available: bool
     gpu_name: str | None
     packages: dict[str, bool]
+    cpu_compute_types: tuple[str, ...] = ()
 
 
 def detect_platform() -> PlatformInfo:
@@ -57,11 +59,13 @@ def detect_platform() -> PlatformInfo:
         cuda_available=gpu_name is not None,
         gpu_name=gpu_name,
         packages={
-            "faster-whisper": module_available("faster_whisper"),
+            "faster-whisper": module_usable("faster_whisper"),
+            "ctranslate2": module_usable("ctranslate2"),
             "whisperx": module_available("whisperx"),
             "torch": module_available("torch"),
             "pyannote.audio": module_available("pyannote.audio"),
         },
+        cpu_compute_types=detect_cpu_compute_types(),
     )
 
 
@@ -69,9 +73,9 @@ def detect_os() -> tuple[str, str | None]:
     if hasattr(py_platform, "freedesktop_os_release"):
         try:
             release = py_platform.freedesktop_os_release()
-            return release.get("PRETTY_NAME") or release.get("NAME") or py_platform.system(), release.get(
-                "VERSION_ID"
-            )
+            return release.get("PRETTY_NAME") or release.get(
+                "NAME"
+            ) or py_platform.system(), release.get("VERSION_ID")
         except OSError:
             pass
     return py_platform.system() or "unknown", py_platform.release() or None
@@ -132,3 +136,20 @@ def module_available(module_name: str) -> bool:
         return importlib.util.find_spec(module_name) is not None
     except ModuleNotFoundError:
         return False
+
+
+def module_usable(module_name: str) -> bool:
+    try:
+        importlib.import_module(module_name)
+    except (ImportError, OSError, RuntimeError):
+        return False
+    return True
+
+
+def detect_cpu_compute_types() -> tuple[str, ...]:
+    try:
+        import ctranslate2
+
+        return tuple(sorted(ctranslate2.get_supported_compute_types("cpu")))
+    except (ImportError, OSError, RuntimeError):
+        return ()

@@ -1,2 +1,1 @@
 """Platform detection and diagnostics."""
-

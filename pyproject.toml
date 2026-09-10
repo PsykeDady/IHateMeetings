@@ -1,6 +1,6 @@
 [project]
 name = "ihatemeetings"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first intelligent meeting transcription."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,11 +8,14 @@ authors = [
   { name = "IHateMeetings contributors" }
 ]
 keywords = ["transcription", "meetings", "asr", "diarization", "local-first"]
-dependencies = []
+dependencies = [
+  "faster-whisper==1.2.1",
+]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0"
+  "pytest>=8.0",
+  "ruff>=0.9",
 ]
 
 [project.scripts]
@@ -27,6 +30,9 @@ build-backend = "hatchling.build"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+  "real_asr: runs local faster-whisper inference and requires an explicitly cached model",
+]
 
 [tool.ruff]
 line-length = 100

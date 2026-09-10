@@ -9,8 +9,11 @@ wsl --install -d Ubuntu-24.04
 Inside WSL:
 
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ./install/wsl-ubuntu.sh
+uv run ihm models download small
 uv run ihm doctor
+uv run ihm /mnt/c/Users/NAME/meeting.mp3 --language it
 ```
 
 Files under `/mnt/c/Users/...` are supported, but keep virtual environments, caches, models and temporary processing files inside the Linux filesystem for performance:
@@ -20,3 +23,12 @@ Files under `/mnt/c/Users/...` are supported, but keep virtual environments, cac
 ~/ihm-work/
 ```
 
+Run the repository and its `.venv` from the Linux filesystem. The explicit `small` model download uses about 490 MB; its cache remains under the WSL Linux home directory.
+
+To remove project-local generated files inside WSL:
+
+```bash
+./install/uninstall.sh --yes
+```
+
+This does not uninstall Ubuntu, WSL, FFmpeg, Python, Git or `uv`.

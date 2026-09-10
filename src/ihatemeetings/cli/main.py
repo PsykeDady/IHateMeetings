@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from ihatemeetings import __version__
+from ihatemeetings.asr.models import MODELS, download_model, is_model_cached, model_cache_dir
 from ihatemeetings.config.defaults import RuntimeConfig
+from ihatemeetings.errors import IHMError
+from ihatemeetings.pipeline import run_transcription
 from ihatemeetings.platform.doctor import run_doctor
 
 
@@ -20,15 +23,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(exc.code)
     configure_logging(verbose=args.verbose, debug=args.debug)
 
-    command = args.command
-    if command == "doctor":
-        return run_doctor()
-    if command == "models":
-        return handle_models(args)
-    if command == "speakers":
-        return handle_speakers(args)
-    if command == "transcribe":
-        return handle_transcribe(args)
+    try:
+        command = args.command
+        if command == "doctor":
+            return run_doctor()
+        if command == "models":
+            return handle_models(args)
+        if command == "speakers":
+            return handle_speakers(args)
+        if command == "transcribe":
+            return handle_transcribe(args)
+    except IHMError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        if exc.remediation:
+            print(f"Fix: {exc.remediation}", file=sys.stderr)
+        return 1
 
     parser.print_help()
     return 0
@@ -55,6 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
     models = subparsers.add_parser("models", help="Manage local model metadata.")
     model_subcommands = models.add_subparsers(dest="models_command", required=True)
     model_subcommands.add_parser("list", help="List configured model profiles.")
+    model_download = model_subcommands.add_parser(
+        "download", help="Explicitly download a supported ASR model."
+    )
+    model_download.add_argument("model", choices=tuple(MODELS))
     models.set_defaults(command="models")
 
     speakers = subparsers.add_parser("speakers", help="Manage local speaker identities.")
@@ -75,6 +88,14 @@ def add_transcribe_arguments(parser: argparse.ArgumentParser, positional: bool =
         help="Execution profile. Defaults to automatic selection.",
     )
     parser.add_argument("--language", help="Expected language, for example 'it'.")
+    parser.add_argument("--model", help="Model name or path to a local CTranslate2 model.")
+    parser.add_argument(
+        "--device", choices=("auto", "cpu", "cuda"), default=None, help="Inference device."
+    )
+    parser.add_argument("--compute-type", help="CTranslate2 compute type, such as int8.")
+    parser.add_argument(
+        "--output-dir", type=Path, default=None, help="Output root directory (default: output)."
+    )
     parser.add_argument("--config", type=Path, help="Optional configuration file.")
     parser.add_argument("--context", type=Path, help="Optional meeting context file.")
     parser.add_argument("--anchors", type=Path, help="Optional anchor mapping YAML file.")
@@ -89,31 +110,46 @@ def handle_transcribe(args: argparse.Namespace) -> int:
     if not input_path.exists():
         print(f"Input file not found: {input_path}")
         return 2
+    if not input_path.is_file():
+        print(f"Input is not a file: {input_path}")
+        return 2
+    phase2_options = [args.context, args.anchors, args.glossary]
+    if any(phase2_options):
+        print("Context, anchors and glossary processing starts after Phase 1.")
+        return 2
 
     config = RuntimeConfig.from_sources(
         profile=args.profile,
         language=args.language,
+        model=args.model,
+        device=args.device,
+        compute_type=args.compute_type,
+        output_dir=args.output_dir,
         config_file=args.config,
     )
     print("IHateMeetings")
     print()
-    print(f"Input ............ {input_path}")
-    print(f"Profile .......... {config.profile or 'auto'}")
-    print(f"Language ......... {config.language or 'auto'}")
-    print("Transcription is not implemented in Phase 0.")
-    print("Run 'ihm doctor' to validate the local environment before Phase 1.")
-    return 2
+    run_transcription(input_path, config)
+    return 0
 
 
 def handle_models(args: argparse.Namespace) -> int:
     if args.models_command == "list":
         print("IHateMeetings model profiles")
         print()
-        print("fast ............. planned ASR profile for quick local transcription")
-        print("balanced ......... planned default quality/speed profile")
-        print("accurate ......... planned highest-quality local profile")
+        for name, spec in MODELS.items():
+            status = "cached" if is_model_cached(name) else "not downloaded"
+            print(f"{name:<18} {spec.approximate_size:<14} {status}")
         print()
-        print("No model weights are bundled or downloaded by Phase 0.")
+        print(f"Cache: {model_cache_dir()}")
+        print("No model weights are bundled or downloaded automatically.")
+        return 0
+    if args.models_command == "download":
+        spec = MODELS[args.model]
+        print(f"Downloading {spec.name} from {spec.repository} ({spec.approximate_size}).")
+        print("This command requires Internet access. Meeting media is never uploaded.")
+        path = download_model(args.model)
+        print(f"Model ready: {path}")
         return 0
     return 2
 

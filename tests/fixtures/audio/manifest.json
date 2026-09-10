@@ -1,0 +1,23 @@
+{
+  "ingresso.wav": {
+    "sha256": "fec046af6e5a8c7e710099ce063084b1fdc5d0bb2fd6f9c01fb05f10b7de8f3a",
+    "duration": 14.84,
+    "text": "Benvenuti in questa riunione, sono davide galati lo speaker, oggi vedremo ehm l'argomento test progetto",
+    "keywords": ["benvenuti", "speaker", "test", "progetto"],
+    "minimum_keyword_matches": 3
+  },
+  "chiacchiera.wav": {
+    "sha256": "7a522e2162d0dee99577f1173dceee13fc85a0b40236646c35d2e794463d5ebe",
+    "duration": 20.44,
+    "text": "Finche la barca va lasciala andare ehm i vampiri da neonati bevono latte da vena tanto va lo stagista a largo che ci rimette la produzione, tra il dire e il deploy c è di mezzo sonar. budino e dino si spaventa",
+    "keywords": ["produzione", "budino", "dino", "spaventa"],
+    "minimum_keyword_matches": 3
+  },
+  "esempioDynamo.wav": {
+    "sha256": "cc3510dc11738ab99c3d7e7c1eb72dc7e8c069434e283467c8d5701a5ccd0fc2",
+    "duration": 18.84,
+    "text": "Ad esempio questa struttura possiamo inserirla interamente su dynamo db utilizzando come pk la seguente test*test scusate #",
+    "keywords": ["ad", "esempio", "questa", "test"],
+    "minimum_keyword_matches": 3
+  }
+}
