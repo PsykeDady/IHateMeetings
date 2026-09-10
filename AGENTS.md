@@ -189,7 +189,7 @@ Do not require root privileges during normal runtime.
 
 Use:
 
-* Python 3.11+;
+* Python 3.13, managed by `uv`;
 * `uv`;
 * `pyproject.toml`;
 * `uv.lock`.
@@ -215,7 +215,7 @@ Basic system dependencies should be installable using official repositories when
 Example:
 
 ```
-sudo pacman -S --needed ffmpeg python git
+sudo pacman -S --needed ffmpeg git uv
 ```
 
 Avoid mandatory AUR dependencies.
@@ -230,7 +230,7 @@ Expected bootstrap resembles:
 
 ```
 sudo apt update
-sudo apt install ffmpeg python3 python3-venv git
+sudo apt install ffmpeg git
 ```
 
 Do not assume Ubuntu and Arch provide identical Python versions.
@@ -242,7 +242,7 @@ Do not assume Ubuntu and Arch provide identical Python versions.
 Expected bootstrap resembles:
 
 ```
-sudo dnf install ffmpeg python3 git
+sudo dnf install ffmpeg git
 ```
 
 Detect and explain multimedia repository problems rather than failing mysteriously.

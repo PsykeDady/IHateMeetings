@@ -16,7 +16,7 @@ Removes IHateMeetings project-local generated files.
 Options:
   --yes        Required to actually delete files.
   --user-data  Also remove IHateMeetings user cache/data directories.
-  --all        Same as --user-data for the current Phase 0 footprint.
+  --all        Same as --user-data for the current project footprint.
   --dry-run    Print what would be removed without deleting anything.
   --help       Show this help.
 
@@ -97,4 +97,3 @@ done
 find "$PROJECT_ROOT" -type d -name __pycache__ -prune -exec rm -rf {} +
 
 echo "Uninstall cleanup complete."
-

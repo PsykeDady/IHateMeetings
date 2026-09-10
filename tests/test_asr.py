@@ -34,10 +34,19 @@ def test_faster_whisper_backend_converts_and_consumes_segments(monkeypatch, tmp_
     model = tmp_path / "model"
     result = FasterWhisperBackend().transcribe(
         audio,
-        ASROptions(model, "tiny", "it", "cpu", "int8"),
+        ASROptions(
+            model,
+            "tiny",
+            "it",
+            "cpu",
+            "int8",
+            glossary_terms=("DynamoDB", "API Gateway", "STAG"),
+        ),
     )
 
     assert result.segments[0].text == "Ciao"
     assert result.language == "it"
     assert created["init"] == {"device": "cpu", "compute_type": "int8"}
     assert created["transcribe"]["word_timestamps"] is False
+    assert created["transcribe"]["task"] == "transcribe"
+    assert created["transcribe"]["initial_prompt"] == "DynamoDB, API Gateway, STAG"

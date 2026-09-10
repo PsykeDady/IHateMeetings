@@ -15,7 +15,7 @@ class FasterWhisperBackend(ASRBackend):
         except ImportError as exc:
             raise IHMError(
                 "faster-whisper is not installed.",
-                "Run 'uv sync --extra dev' and then 'uv run ihm doctor'.",
+                "Run 'uv sync --python 3.13 --extra dev' and then 'uv run ihm doctor'.",
             ) from exc
 
         try:
@@ -27,6 +27,8 @@ class FasterWhisperBackend(ASRBackend):
             generated_segments, info = model.transcribe(
                 str(audio_path),
                 language=options.language,
+                task="transcribe",
+                initial_prompt=_glossary_prompt(options.glossary_terms),
                 beam_size=5,
                 vad_filter=False,
                 word_timestamps=False,
@@ -70,3 +72,8 @@ class FasterWhisperBackend(ASRBackend):
 
 def _optional_float(value: object) -> float | None:
     return float(value) if value is not None else None
+
+
+def _glossary_prompt(terms: tuple[str, ...]) -> str | None:
+    cleaned = tuple(term.strip() for term in terms if term.strip())
+    return ", ".join(cleaned) if cleaned else None

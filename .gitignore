@@ -8,4 +8,4 @@ htmlcov/
 .mypy_cache/
 .ihm/
 output/
-
+tests/private_audio/

@@ -1,5 +1,6 @@
+from ihatemeetings.alignment.models import ALIGNMENT_MODELS, _model_files, alignment_cache_dir
 from ihatemeetings.asr.models import model_cache_dir
-from ihatemeetings.models import ASRResult, ASRSegment, Transcript, TranscriptSegment
+from ihatemeetings.models import ASRResult, ASRSegment, Transcript, TranscriptSegment, Word
 
 
 def test_canonical_transcript_is_versioned_and_typed():
@@ -13,11 +14,22 @@ def test_canonical_transcript_is_versioned_and_typed():
 
     payload = transcript.to_dict()
 
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["meeting"]["language"] == "it"
     assert payload["speakers"] == []
     assert payload["segments"][0]["speaker"] is None
     assert payload["segments"][0]["confidence"] is None
+    assert payload["segments"][0]["words"] == []
+
+
+def test_aligned_word_serialization():
+    word = Word("Buongiorno", 1.25, 1.83, 0.91)
+    assert word.to_dict() == {
+        "text": "Buongiorno",
+        "start": 1.25,
+        "end": 1.83,
+        "confidence": 0.91,
+    }
 
 
 def test_raw_asr_result_preserves_backend_evidence():
@@ -48,3 +60,14 @@ def test_raw_asr_result_preserves_backend_evidence():
 def test_model_cache_respects_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     assert model_cache_dir() == tmp_path / "ihatemeetings" / "models"
+    assert alignment_cache_dir() == tmp_path / "ihatemeetings" / "alignment"
+
+
+def test_alignment_download_selects_one_weight_format_per_model():
+    english_files = _model_files(ALIGNMENT_MODELS["en"])
+    italian_files = _model_files(ALIGNMENT_MODELS["it"])
+
+    assert "model.safetensors" in english_files
+    assert "pytorch_model.bin" not in english_files
+    assert "pytorch_model.bin" in italian_files
+    assert "model.safetensors" not in italian_files

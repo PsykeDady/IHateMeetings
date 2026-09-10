@@ -52,7 +52,7 @@ def detect_platform() -> PlatformInfo:
         is_wsl=detect_wsl(),
         python=PythonStatus(
             version=".".join(str(part) for part in sys.version_info[:3]),
-            supported=sys.version_info >= (3, 11),
+            supported=sys.version_info[:2] == (3, 13),
         ),
         ffmpeg=detect_tool("ffmpeg"),
         ffprobe=detect_tool("ffprobe"),
@@ -63,6 +63,7 @@ def detect_platform() -> PlatformInfo:
             "ctranslate2": module_usable("ctranslate2"),
             "whisperx": module_available("whisperx"),
             "torch": module_available("torch"),
+            "transformers": module_available("transformers"),
             "pyannote.audio": module_available("pyannote.audio"),
         },
         cpu_compute_types=detect_cpu_compute_types(),

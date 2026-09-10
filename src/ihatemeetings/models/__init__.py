@@ -4,6 +4,7 @@ from ihatemeetings.models.transcript import (
     MediaInfo,
     Transcript,
     TranscriptSegment,
+    Word,
 )
 
-__all__ = ["ASRResult", "ASRSegment", "MediaInfo", "Transcript", "TranscriptSegment"]
+__all__ = ["ASRResult", "ASRSegment", "MediaInfo", "Transcript", "TranscriptSegment", "Word"]

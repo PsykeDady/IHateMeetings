@@ -7,9 +7,16 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ihatemeetings import __version__
+from ihatemeetings.alignment.models import (
+    ALIGNMENT_MODELS,
+    alignment_cache_dir,
+    download_alignment_model,
+    is_alignment_model_cached,
+)
 from ihatemeetings.asr.models import MODELS, download_model, is_model_cached, model_cache_dir
 from ihatemeetings.config.defaults import RuntimeConfig
 from ihatemeetings.errors import IHMError
+from ihatemeetings.languages import SUPPORTED_LANGUAGES
 from ihatemeetings.pipeline import run_transcription
 from ihatemeetings.platform.doctor import run_doctor
 
@@ -68,6 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
         "download", help="Explicitly download a supported ASR model."
     )
     model_download.add_argument("model", choices=tuple(MODELS))
+    alignment_download = model_subcommands.add_parser(
+        "download-alignment", help="Explicitly download a language alignment model."
+    )
+    alignment_download.add_argument("language", choices=tuple(ALIGNMENT_MODELS))
     models.set_defaults(command="models")
 
     speakers = subparsers.add_parser("speakers", help="Manage local speaker identities.")
@@ -87,12 +98,25 @@ def add_transcribe_arguments(parser: argparse.ArgumentParser, positional: bool =
         default=None,
         help="Execution profile. Defaults to automatic selection.",
     )
-    parser.add_argument("--language", help="Expected language, for example 'it'.")
+    parser.add_argument(
+        "--language",
+        choices=SUPPORTED_LANGUAGES,
+        help="Official input language: Italian (it) or English (en).",
+    )
     parser.add_argument("--model", help="Model name or path to a local CTranslate2 model.")
     parser.add_argument(
         "--device", choices=("auto", "cpu", "cuda"), default=None, help="Inference device."
     )
     parser.add_argument("--compute-type", help="CTranslate2 compute type, such as int8.")
+    parser.add_argument(
+        "--align",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable word alignment (default: use it when locally ready).",
+    )
+    parser.add_argument(
+        "--alignment-model", help="Path to a local Transformers CTC alignment model."
+    )
     parser.add_argument(
         "--output-dir", type=Path, default=None, help="Output root directory (default: output)."
     )
@@ -115,7 +139,7 @@ def handle_transcribe(args: argparse.Namespace) -> int:
         return 2
     phase2_options = [args.context, args.anchors, args.glossary]
     if any(phase2_options):
-        print("Context, anchors and glossary processing starts after Phase 1.")
+        print("Context, anchors and glossary processing is not supported in Phase 2.")
         return 2
 
     config = RuntimeConfig.from_sources(
@@ -124,6 +148,8 @@ def handle_transcribe(args: argparse.Namespace) -> int:
         model=args.model,
         device=args.device,
         compute_type=args.compute_type,
+        align=args.align,
+        alignment_model=args.alignment_model,
         output_dir=args.output_dir,
         config_file=args.config,
     )
@@ -142,6 +168,12 @@ def handle_models(args: argparse.Namespace) -> int:
             print(f"{name:<18} {spec.approximate_size:<14} {status}")
         print()
         print(f"Cache: {model_cache_dir()}")
+        print()
+        print("Alignment models")
+        for language, spec in ALIGNMENT_MODELS.items():
+            status = "cached" if is_alignment_model_cached(language) else "not downloaded"
+            print(f"{language:<18} {spec.approximate_size:<14} {spec.license:<12} {status}")
+        print(f"Alignment cache: {alignment_cache_dir()}")
         print("No model weights are bundled or downloaded automatically.")
         return 0
     if args.models_command == "download":
@@ -150,6 +182,16 @@ def handle_models(args: argparse.Namespace) -> int:
         print("This command requires Internet access. Meeting media is never uploaded.")
         path = download_model(args.model)
         print(f"Model ready: {path}")
+        return 0
+    if args.models_command == "download-alignment":
+        spec = ALIGNMENT_MODELS[args.language]
+        print(
+            f"Downloading alignment model for {args.language} from {spec.repository} "
+            f"({spec.approximate_size}, {spec.license})."
+        )
+        print("This command requires Internet access. Meeting media is never uploaded.")
+        path = download_alignment_model(args.language)
+        print(f"Alignment model ready: {path}")
         return 0
     return 2
 

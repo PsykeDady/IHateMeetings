@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from ihatemeetings.alignment.models import (
+    ALIGNMENT_MODELS,
+    alignment_runtime_available,
+    is_alignment_model_cached,
+)
 from ihatemeetings.asr.models import MODELS, is_model_cached
 from ihatemeetings.platform.compute import cuda_device_count
 from ihatemeetings.platform.detect import PlatformInfo, detect_platform
@@ -34,6 +39,7 @@ def render_doctor(info: PlatformInfo) -> str:
         f"- WSL ............... {yes_no(info.is_wsl)}",
         "",
         "Runtime",
+        "- Python target ...... 3.13 (project runtime managed by uv)",
         f"- Python ............ {info.python.version} {mark(info.python.supported)}",
         f"- FFmpeg ............ {tool_label(info.ffmpeg.installed)}",
         f"- FFprobe ........... {tool_label(info.ffprobe.installed)}",
@@ -41,7 +47,7 @@ def render_doctor(info: PlatformInfo) -> str:
         "ML",
         f"- faster-whisper .... {required_label(info.packages.get('faster-whisper', False))}",
         f"- CTranslate2 ....... {required_label(info.packages.get('ctranslate2', False))}",
-        f"- WhisperX .......... {optional_label(info.packages['whisperx'])}",
+        f"- WhisperX .......... {optional_label(info.packages['whisperx'])} (not required)",
         f"- PyTorch ........... {optional_label(info.packages['torch'])}",
         f"- pyannote .......... {optional_label(info.packages['pyannote.audio'])}",
         "",
@@ -51,11 +57,19 @@ def render_doctor(info: PlatformInfo) -> str:
         f"- CPU INT8 .......... {required_label('int8' in info.cpu_compute_types)}",
         "",
         "Models",
+        "- Languages ......... it, en (official v1 support)",
         f"- Cached ............ {cached_model_label()}",
         f"- Transcription ..... {transcription_label(info)}",
         "",
+        "Alignment",
+        f"- Torch ............. {optional_label(info.packages.get('torch', False))}",
+        f"- Transformers ...... {optional_label(info.packages.get('transformers', False))}",
+        f"- Runtime ........... {alignment_runtime_label()}",
+        f"- Cached models ..... {cached_alignment_model_label()}",
+        f"- Status ............ {alignment_status_label()}",
+        "",
         "Optional",
-        "- OCR ............... not installed (Phase 2+)",
+        "- OCR ............... not installed (future phase)",
         "- LLM provider ...... disabled",
     ]
     problems = remediation(info)
@@ -65,7 +79,7 @@ def render_doctor(info: PlatformInfo) -> str:
         lines.extend(
             [
                 "",
-                "Phase 1 runtime ready.",
+                "Basic transcription runtime ready.",
             ]
         )
     return "\n".join(lines)
@@ -74,7 +88,13 @@ def render_doctor(info: PlatformInfo) -> str:
 def remediation(info: PlatformInfo) -> list[str]:
     problems: list[str] = []
     if not info.python.supported:
-        problems.append("Python 3.11 or newer is required.")
+        problems.extend(
+            [
+                "IHateMeetings requires the project Python 3.13 runtime.",
+                "  Run: uv python install 3.13",
+                "  Then: uv sync --python 3.13 --extra dev --extra alignment",
+            ]
+        )
     if not info.ffmpeg.installed:
         problems.extend(
             [
@@ -87,9 +107,9 @@ def remediation(info: PlatformInfo) -> list[str]:
     if not info.ffprobe.installed:
         problems.append("FFprobe missing. It is usually provided by the FFmpeg package.")
     if not info.packages.get("faster-whisper", False):
-        problems.append("faster-whisper missing. Run: uv sync --extra dev")
+        problems.append("faster-whisper missing. Run: uv sync --python 3.13 --extra dev")
     if not info.packages.get("ctranslate2", False):
-        problems.append("CTranslate2 missing. Run: uv sync --extra dev")
+        problems.append("CTranslate2 missing. Run: uv sync --python 3.13 --extra dev")
     elif "int8" not in info.cpu_compute_types:
         problems.append("CTranslate2 CPU INT8 inference is unavailable on this machine.")
     return problems
@@ -130,6 +150,31 @@ def transcription_label(info: PlatformInfo) -> str:
         return "runtime unavailable"
     if not cached_models():
         return "model required; run 'ihm models download small'"
+    return "operational OK"
+
+
+def cached_alignment_models() -> tuple[str, ...]:
+    return tuple(language for language in ALIGNMENT_MODELS if is_alignment_model_cached(language))
+
+
+def cached_alignment_model_label() -> str:
+    available = cached_alignment_models()
+    return ", ".join(available) if available else "none"
+
+
+def alignment_runtime_label() -> str:
+    return (
+        "OK"
+        if alignment_runtime_available(verify_imports=True)
+        else "not installed or unusable (optional)"
+    )
+
+
+def alignment_status_label() -> str:
+    if not alignment_runtime_available(verify_imports=True):
+        return "unavailable; run 'uv sync --python 3.13 --extra alignment'"
+    if not cached_alignment_models():
+        return "model required; run 'ihm models download-alignment it'"
     return "operational OK"
 
 

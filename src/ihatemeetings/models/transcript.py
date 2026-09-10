@@ -60,8 +60,32 @@ class TranscriptSegment:
     start: float
     end: float
     text: str
+    words: tuple[Word, ...] = field(default_factory=tuple)
     speaker: None = None
     confidence: None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "words": [word.to_dict() for word in self.words]}
+
+
+@dataclass(frozen=True)
+class Word:
+    text: str
+    start: float | None
+    end: float | None
+    confidence: float | None
+
+    def __post_init__(self) -> None:
+        if (self.start is None) != (self.end is None):
+            raise ValueError("word start and end must both be present or absent")
+        if (
+            self.start is not None
+            and self.end is not None
+            and (self.start < 0 or self.end < self.start)
+        ):
+            raise ValueError("word timestamps must be ordered and non-negative")
+        if self.confidence is not None and not 0 <= self.confidence <= 1:
+            raise ValueError("word confidence must be between zero and one")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -74,7 +98,7 @@ class Transcript:
     language_probability: float | None
     source: str
     segments: tuple[TranscriptSegment, ...] = field(default_factory=tuple)
-    schema_version: int = 1
+    schema_version: int = 2
 
     def to_dict(self) -> dict[str, Any]:
         return {

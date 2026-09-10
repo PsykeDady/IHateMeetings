@@ -4,22 +4,24 @@
 
 IHateMeetings is a local-first meeting transcription project. The goal is a staged pipeline for media processing, speech recognition, alignment, diarization, speaker resolution, confidence analysis and auditable exports.
 
-This repository is currently at **Phase 1: Basic transcription**. It performs local media inspection, FFmpeg audio preparation, faster-whisper inference and canonical JSON/Markdown/TXT/SRT/VTT export. Alignment, diarization and speaker identification are deliberately not part of this phase.
+This repository is currently at **Phase 2: Word alignment**. It performs local media inspection, FFmpeg audio preparation, faster-whisper inference, optional CTC word alignment and canonical JSON/Markdown/TXT/SRT/VTT export. Diarization and speaker identification are deliberately not part of this phase.
 
 ## Install for Development
 
-Install `uv` first if needed (Arch: `sudo pacman -S uv`; other Linux/WSL: `curl -LsSf https://astral.sh/uv/install.sh | sh`), then:
+IHateMeetings v1 uses CPython 3.13 managed by `uv`; the host's system Python is not changed or downgraded. Install `uv` first if needed (Arch: `sudo pacman -S uv`; other Linux/WSL: `curl -LsSf https://astral.sh/uv/install.sh | sh`), then:
 
 ```bash
-uv sync --extra dev
+uv python install 3.13
+uv sync --python 3.13 --extra dev --extra alignment
 uv run ihm --help
 uv run ihm doctor
 uv run ihm models download small
-uv run ihm meeting.mp3 --language it
+uv run ihm models download-alignment it
+uv run ihm meeting.mp3 --language it --align
 uv run pytest
 ```
 
-The repository includes three short, distributable Italian WAV fixtures. Normal tests verify their integrity without downloading a model. To run the real faster-whisper regression tests locally:
+Private/local recordings may be placed in the ignored `tests/private_audio/` directory. To run the real faster-whisper regression tests locally:
 
 ```bash
 uv run ihm models download tiny
@@ -27,6 +29,15 @@ IHM_RUN_REAL_ASR=1 uv run pytest -m real_asr -v
 ```
 
 Use `IHM_TEST_MODEL=small` (or another cached model) to compare a different model. Real-ASR tests are opt-in and never download weights themselves.
+
+When private ground truth and both models are locally available, run the isolated ASR and alignment benchmarks with:
+
+```bash
+uv run env IHM_RUN_REAL_ASR=1 IHM_TEST_MODEL=small pytest -m real_asr -v -s
+uv run env IHM_RUN_REAL_ALIGNMENT=1 IHM_TEST_MODEL=small pytest -m real_alignment -v -s
+```
+
+These report WER/CER per fixture and verify ordered, bounded word timestamps. Private audio and generated outputs remain outside version control.
 
 Model download is always explicit. The Phase 1 profiles are:
 
@@ -38,7 +49,23 @@ Model download is always explicit. The Phase 1 profiles are:
 
 CPU-only operation uses INT8 and defaults to `fast`. A detected CTranslate2 CUDA runtime defaults to `balanced` and FP16. Override these choices with `--model`, `--device` and `--compute-type`. Models are stored under `~/.cache/ihatemeetings/models`; meeting media never leaves the machine.
 
-Output is written to `output/<input-stem>/`. Raw FFprobe and ASR records remain in `raw/media.json` and `raw/asr.json`; final exporters consume `transcript.json` schema version 1.
+Alignment requires the optional local runtime and a language model. `en` uses `facebook/wav2vec2-base-960h` (about 380 MB); `it` uses `jonatasgrosman/wav2vec2-large-xlsr-53-italian` (about 1.3 GB). Both are Apache-2.0. Download is always explicit:
+
+```bash
+uv sync --python 3.13 --extra alignment
+uv run ihm models download-alignment it
+uv run ihm meeting.mp3 --language it --align
+```
+
+With neither `--align` nor `--no-align`, alignment runs only when the runtime and detected-language model are already local. `--align` reports an unavailable backend/model clearly but still exports the Phase 1 transcript. `--no-align` disables it. Custom compatible local CTC model directories can be passed through `--alignment-model`.
+
+## Language policy
+
+IHateMeetings v1 officially supports exactly Italian (`it`) and English (`en`). Explicit selection accepts `--language it` and `--language en`; omitting the option lets faster-whisper detect the language and routes either supported result to its matching alignment model. Other languages may be recognized by faster-whisper but are unsupported and untested: automatic detection emits a warning, exports raw/canonical ASR text, and skips alignment with status `unsupported_language`. Explicit unsupported language codes are rejected.
+
+Italian speech containing English technical vocabulary is a first-class input. ASR always uses transcription rather than translation and IHateMeetings does not rewrite or Italianize terms such as `deploy`, `commit`, `merge`, `timeout`, `backend`, `frontend`, `Lambda`, `API Gateway`, `OpenSearch`, `DynamoDB`, `STAG`, `DEV` and `PROD`. The ASR contract already accepts typed glossary prompt terms for the future `glossary.yaml` stage; Phase 2 does not parse glossaries or correct transcript text.
+
+Output is written to `output/<input-stem>/`. Raw FFprobe, ASR and alignment records remain separate in `raw/media.json`, `raw/asr.json` and `raw/alignment.json`; final exporters consume `transcript.json` schema version 2.
 
 ## Uninstall / Cleanup
 
@@ -71,25 +98,26 @@ ihm --help
 ihm doctor
 ihm models list
 ihm models download small
+ihm models download-alignment it
 ihm speakers list
 ihm transcribe FILE
 ihm FILE
 ```
 
-Both transcription forms run the same Phase 1 pipeline:
+Both transcription forms run the same Phase 2 pipeline:
 
 ```bash
-uv run ihm meeting.mp3 --language it --profile fast
-uv run ihm transcribe meeting.mp3 --language it --model small
+uv run ihm meeting.mp3 --language it --profile fast --align
+uv run ihm transcribe meeting.mp3 --language it --model small --align
 ```
 
-`--language` may be omitted for automatic detection. Custom converted CTranslate2 model directories can be supplied to `--model`. Context, anchors, alignment, diarization and reasoning remain unavailable in Phase 1.
+`--language` may be omitted for automatic detection. Custom converted CTranslate2 model directories can be supplied to `--model`. Context, anchors, diarization and reasoning remain unavailable in Phase 2.
 
 ## Roadmap
 
 1. Phase 0: complete — project bootstrap, CLI, doctor, installers, docs, CI.
 2. Phase 1: complete — FFmpeg preprocessing, faster-whisper ASR, canonical JSON, Markdown/TXT/SRT/VTT export.
-3. Phase 2: word-level alignment.
+3. Phase 2: complete — optional local word-level CTC alignment and schema v2.
 4. Phase 3: diarization.
 5. Phase 4: manual and anchor-based speaker resolution.
 6. Phase 5: cache/resume, confidence engine and improved hardware profiles.

@@ -1,9 +1,9 @@
 [project]
 name = "ihatemeetings"
-version = "0.2.0"
+version = "0.3.1"
 description = "Local-first intelligent meeting transcription."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 authors = [
   { name = "IHateMeetings contributors" }
 ]
@@ -13,6 +13,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+alignment = [
+  "torch==2.14.0",
+  "transformers==5.16.1",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.9",
@@ -32,8 +36,17 @@ pythonpath = ["src"]
 addopts = "-q"
 markers = [
   "real_asr: runs local faster-whisper inference and requires an explicitly cached model",
+  "real_alignment: runs local CTC word alignment and requires explicitly cached models",
 ]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

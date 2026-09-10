@@ -47,7 +47,8 @@ def resolve_local_model(model: str) -> Path:
         from huggingface_hub.errors import LocalEntryNotFoundError
     except ImportError as exc:
         raise IHMError(
-            "huggingface-hub is unavailable.", "Run 'uv sync --extra dev' and retry."
+            "huggingface-hub is unavailable.",
+            "Run 'uv sync --python 3.13 --extra dev' and retry.",
         ) from exc
     try:
         path = snapshot_download(
@@ -70,7 +71,9 @@ def download_model(model: str) -> Path:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
-        raise IHMError("huggingface-hub is unavailable. Run 'uv sync --extra dev'.") from exc
+        raise IHMError(
+            "huggingface-hub is unavailable. Run 'uv sync --python 3.13 --extra dev'."
+        ) from exc
     try:
         path = snapshot_download(repo_id=spec.repository, cache_dir=model_cache_dir())
     except Exception as exc:

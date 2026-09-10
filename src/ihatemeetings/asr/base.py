@@ -14,6 +14,7 @@ class ASROptions:
     language: str | None
     device: str
     compute_type: str
+    glossary_terms: tuple[str, ...] = ()
 
 
 class ASRBackend(ABC):
