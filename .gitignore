@@ -1,11 +1,1 @@
-.venv/
-.pytest_cache/
-__pycache__/
-*.py[cod]
-.coverage
-htmlcov/
-.ruff_cache/
-.mypy_cache/
-.ihm/
-output/
-tests/private_audio/
+.env
