@@ -25,6 +25,8 @@ from ihatemeetings.errors import IHMError
 from ihatemeetings.languages import SUPPORTED_LANGUAGES
 from ihatemeetings.pipeline import run_transcription
 from ihatemeetings.platform.doctor import run_doctor
+from ihatemeetings.review.interactive import format_segment, format_speakers, run_interactive
+from ihatemeetings.review.service import ReviewSession
 from ihatemeetings.speakers import load_resolution_config, parse_speaker_mapping
 
 
@@ -47,6 +49,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_speakers(args)
         if command == "transcribe":
             return handle_transcribe(args)
+        if command == "review":
+            return handle_review(args)
     except IHMError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         if exc.remediation:
@@ -96,6 +100,51 @@ def build_parser() -> argparse.ArgumentParser:
     speaker_subcommands = speakers.add_subparsers(dest="speakers_command", required=True)
     speaker_subcommands.add_parser("list", help="List local speaker identities.")
     speakers.set_defaults(command="speakers")
+
+    review = subparsers.add_parser("review", help="Review an existing transcript without ML.")
+    review_commands = review.add_subparsers(dest="review_command", required=True)
+    review_list = review_commands.add_parser("list", help="List stable review segment IDs.")
+    review_list.add_argument("output", type=Path)
+    review_list.add_argument("--unknown-only", action="store_true")
+    review_show = review_commands.add_parser("show", help="Inspect one segment or UNKNOWN ID.")
+    review_show.add_argument("output", type=Path)
+    review_show.add_argument("reference")
+    review_speakers = review_commands.add_parser(
+        "speakers", help="List original clusters and reviewed identities."
+    )
+    review_speakers.add_argument("output", type=Path)
+    assign_speaker = review_commands.add_parser(
+        "assign-speaker", help="Assign a display name to an entire original cluster."
+    )
+    assign_speaker.add_argument("output", type=Path)
+    assign_speaker.add_argument("cluster")
+    assign_speaker.add_argument("--name", required=True)
+    assign_segment = review_commands.add_parser(
+        "assign-segment", help="Override the speaker for one segment."
+    )
+    assign_segment.add_argument("output", type=Path)
+    assign_segment.add_argument("reference")
+    _add_assignment_target(assign_segment)
+    assign_unknown = review_commands.add_parser(
+        "assign-unknown", help="Resolve one original UNKNOWN by SEG or UNK ID."
+    )
+    assign_unknown.add_argument("output", type=Path)
+    assign_unknown.add_argument("reference")
+    _add_assignment_target(assign_unknown)
+    merge = review_commands.add_parser("merge", help="Merge adjacent active segments.")
+    merge.add_argument("output", type=Path)
+    merge.add_argument("first")
+    merge.add_argument("second")
+    _add_assignment_target(merge, required=False)
+    delete = review_commands.add_parser("delete", help="Tombstone one reviewed segment.")
+    delete.add_argument("output", type=Path)
+    delete.add_argument("reference")
+    interactive = review_commands.add_parser(
+        "interactive", help="Run transactional prompt-based transcript review."
+    )
+    interactive.add_argument("output", type=Path)
+    interactive.add_argument("--unknown-only", action="store_true")
+    review.set_defaults(command="review")
 
     return parser
 
@@ -293,6 +342,50 @@ def handle_speakers(args: argparse.Namespace) -> int:
     return 2
 
 
+def handle_review(args: argparse.Namespace) -> int:
+    session = ReviewSession.open(args.output)
+    if session.migrated:
+        print("Schema v4 loaded as a v5 migration preview; stable IDs persist only when saved.")
+    command = args.review_command
+    if command == "list":
+        segments = session.list_segments(unknown_only=args.unknown_only)
+        for segment in segments:
+            print(format_segment(session, segment.id))
+            print()
+        if not segments:
+            print("No matching active segments.")
+        return 0
+    if command == "show":
+        print(format_segment(session, args.reference))
+        return 0
+    if command == "speakers":
+        print(format_speakers(session))
+        return 0
+    if command == "assign-speaker":
+        session.assign_cluster(args.cluster, args.name)
+    elif command == "assign-segment":
+        session.assign_segment(args.reference, display_name=args.name, cluster=args.cluster)
+    elif command == "assign-unknown":
+        session.assign_unknown(args.reference, display_name=args.name, cluster=args.cluster)
+    elif command == "merge":
+        session.merge(
+            args.first,
+            args.second,
+            display_name=args.name,
+            cluster=args.cluster,
+        )
+    elif command == "delete":
+        session.delete(args.reference)
+    elif command == "interactive":
+        run_interactive(session, unknown_only=args.unknown_only)
+        return 0
+    else:
+        return 2
+    session.save()
+    print("Review saved; transcript exports regenerated without ML.")
+    return 0
+
+
 def configure_logging(verbose: bool = False, debug: bool = False) -> None:
     level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
     logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
@@ -305,10 +398,16 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _add_assignment_target(parser: argparse.ArgumentParser, *, required: bool = True) -> None:
+    targets = parser.add_mutually_exclusive_group(required=required)
+    targets.add_argument("--name", help="Explicit display name or existing known identity name.")
+    targets.add_argument("--cluster", help="Explicit existing SPEAKER_NN target cluster.")
+
+
 def normalize_argv(argv: list[str] | None) -> list[str] | None:
     if argv is None or not argv:
         return argv
-    commands = {"doctor", "models", "speakers", "transcribe"}
+    commands = {"doctor", "models", "review", "speakers", "transcribe"}
     first = argv[0]
     if first.startswith("-") or first in commands:
         return argv

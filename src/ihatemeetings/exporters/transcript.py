@@ -1,27 +1,32 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
-from ihatemeetings.models import Speaker, Transcript
+from ihatemeetings.models import Transcript
+from ihatemeetings.review.effective import EffectiveSegment, canonical_payload, effective_segments
 from ihatemeetings.utils.time import format_timestamp
 
 
 def export_all(transcript: Transcript, output_dir: Path) -> tuple[Path, ...]:
     output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    outputs = (
-        output_dir / "transcript.json",
-        output_dir / "transcript.md",
-        output_dir / "transcript.txt",
-        output_dir / "transcript.srt",
-        output_dir / "transcript.vtt",
-    )
-    _write_private(outputs[0], json.dumps(transcript.to_dict(), indent=2) + "\n")
-    _write_private(outputs[1], render_markdown(transcript))
-    _write_private(outputs[2], render_text(transcript))
-    _write_private(outputs[3], render_srt(transcript))
-    _write_private(outputs[4], render_vtt(transcript))
+    rendered = render_all(transcript)
+    outputs = tuple(output_dir / name for name in rendered)
+    for path in outputs:
+        _write_private(path, rendered[path.name])
     return outputs
+
+
+def render_all(transcript: Transcript) -> dict[str, str]:
+    return {
+        "transcript.json": json.dumps(canonical_payload(transcript), indent=2) + "\n",
+        "transcript.md": render_markdown(transcript),
+        "transcript.txt": render_text(transcript),
+        "transcript.srt": render_srt(transcript),
+        "transcript.vtt": render_vtt(transcript),
+    }
 
 
 def render_markdown(transcript: Transcript) -> str:
@@ -36,10 +41,10 @@ def render_markdown(transcript: Transcript) -> str:
         "## Transcript",
         "",
     ]
-    for segment in transcript.segments:
+    for segment in effective_segments(transcript):
         lines.extend(
             [
-                f"### [{format_timestamp(segment.start)}] {_speaker_label(segment.speaker)}",
+                f"### [{format_timestamp(segment.start)}] {segment.attribution.label}",
                 "",
                 segment.text,
                 "",
@@ -50,28 +55,26 @@ def render_markdown(transcript: Transcript) -> str:
 
 def render_text(transcript: Transcript) -> str:
     return "\n\n".join(
-        f"[{format_timestamp(segment.start)}] {_speaker_label(segment.speaker)}\n{segment.text}"
-        for segment in transcript.segments
-    ) + ("\n" if transcript.segments else "")
+        f"[{format_timestamp(segment.start)}] {segment.attribution.label}\n{segment.text}"
+        for segment in effective_segments(transcript)
+    ) + ("\n" if effective_segments(transcript) else "")
 
 
 def render_srt(transcript: Transcript) -> str:
     blocks = []
-    for index, segment in enumerate(transcript.segments, 1):
+    for index, segment in enumerate(effective_segments(transcript), 1):
         start = _subtitle_timestamp(segment.start, comma=True)
         end = _subtitle_timestamp(segment.end, comma=True)
-        blocks.append(
-            f"{index}\n{start} --> {end}\n{_subtitle_text(segment.text, segment.speaker)}"
-        )
+        blocks.append(f"{index}\n{start} --> {end}\n{_subtitle_text(segment)}")
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
 def render_vtt(transcript: Transcript) -> str:
     blocks = ["WEBVTT"]
-    for segment in transcript.segments:
+    for segment in effective_segments(transcript):
         start = _subtitle_timestamp(segment.start, comma=False)
         end = _subtitle_timestamp(segment.end, comma=False)
-        blocks.append(f"{start} --> {end}\n{_subtitle_text(segment.text, segment.speaker)}")
+        blocks.append(f"{start} --> {end}\n{_subtitle_text(segment)}")
     return "\n\n".join(blocks) + "\n"
 
 
@@ -80,16 +83,24 @@ def _subtitle_timestamp(seconds: float, *, comma: bool) -> str:
     return timestamp.replace(".", ",") if comma else timestamp
 
 
-def _speaker_label(speaker: Speaker | None) -> str:
-    if speaker is None:
-        return "UNKNOWN [?]"
-    return speaker.name or speaker.cluster
-
-
-def _subtitle_text(text: str, speaker: Speaker | None) -> str:
-    return f"[{_speaker_label(speaker)}] {text}" if speaker is not None else text
+def _subtitle_text(segment: EffectiveSegment) -> str:
+    if segment.attribution.layer == "phase3_unknown":
+        return segment.text
+    return f"[{segment.attribution.label}] {segment.text}"
 
 
 def _write_private(path: Path, content: str) -> None:
-    path.write_text(content, encoding="utf-8")
-    path.chmod(0o600)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise

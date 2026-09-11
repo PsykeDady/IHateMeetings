@@ -1,81 +1,100 @@
-# Canonical transcript schema v4
+# Canonical transcript schema v5
 
-`transcript.json` is the canonical final Phase 4 representation. All text and subtitle exporters consume the same typed `Transcript` object.
+`transcript.json` is the canonical Phase 4.1 representation. Schema v5 adds stable review
+identifiers and an auditable human-review layer while retaining the complete Phase 4 machine
+state.
+
+Every original segment has an ID allocated once in transcript order (`SEG_000001`,
+`SEG_000002`, ...). Every segment whose Phase 3 cluster attribution was null also receives an
+independent provenance ID (`UNK_000001`, `UNK_000002`, ...). Both sequences are monotonic.
+Neither deletion, merging, assignment nor re-export renumbers or recycles an ID.
+
+A segment record has this shape (abridged):
 
 ```json
 {
-  "schema_version": 4,
-  "meeting": {
-    "source": "meeting.mp3",
-    "duration": 42.5,
-    "language": "it",
-    "language_probability": 0.98
+  "id": "SEG_000019",
+  "unknown_id": "UNK_000004",
+  "start": 36.12,
+  "end": 36.71,
+  "text": "cosa.",
+  "words": [],
+  "speaker": null,
+  "confidence": null,
+  "original": {
+    "start": 36.12,
+    "end": 36.71,
+    "text": "cosa.",
+    "words": [],
+    "speaker": null,
+    "confidence": null
   },
-  "speakers": [
-    {
-      "cluster": "SPEAKER_00",
-      "identity": {
-        "id": "partecipante-a",
-        "display_name": "Partecipante A"
-      },
-      "resolution": {
-        "status": "resolved",
-        "confidence": 1.0,
-        "resolver": "conservative-v1",
-        "evidence": [
-          {
-            "type": "manual_mapping",
-            "value": "SPEAKER_00",
-            "confidence": 1.0,
-            "method": "explicit_user_input",
-            "segment_id": null
-          }
-        ],
-        "candidates": [],
-        "warnings": []
-      }
-    }
-  ],
-  "segments": [
-    {
-      "id": "segment-000001",
-      "start": 0.5,
-      "end": 3.2,
-      "text": "Testo della trascrizione.",
-      "speaker": {
-        "cluster": "SPEAKER_00",
-        "identity": {
-          "id": "partecipante-a",
-          "display_name": "Partecipante A"
-        },
-        "resolution": {
-          "status": "resolved",
-          "confidence": 1.0,
-          "resolver": "conservative-v1",
-          "evidence": [
-            {
-              "type": "manual_mapping",
-              "value": "SPEAKER_00",
-              "confidence": 1.0,
-              "method": "explicit_user_input",
-              "segment_id": null
-            }
-          ],
-          "candidates": [],
-          "warnings": []
-        }
-      },
-      "confidence": null,
-      "words": []
-    }
-  ]
+  "review": {
+    "status": "active",
+    "accepted": false,
+    "speaker_assignment": {
+      "kind": "identity",
+      "identity": {"id": "sonia-greco", "display_name": "Sonia Greco"},
+      "cluster": null,
+      "method": "explicit_user_input"
+    },
+    "merged_segment_ids": [],
+    "merged_into": null
+  },
+  "effective": {
+    "status": "active",
+    "start": 36.12,
+    "end": 36.71,
+    "text": "cosa.",
+    "words": [],
+    "speaker": {
+      "label": "Sonia Greco",
+      "original_cluster": null,
+      "target_cluster": null,
+      "identity": {"id": "sonia-greco", "display_name": "Sonia Greco"},
+      "layer": "segment_manual_override",
+      "method": "explicit_user_input"
+    },
+    "confidence": null,
+    "source_segment_ids": ["SEG_000019"]
+  }
 }
 ```
 
-Schema v4 replaces the flat Phase 3 speaker summary with an explicit identity-resolution object. The immutable anonymous `cluster` is always retained. `identity` is populated only for `status: resolved`; otherwise it is null. Resolution status is one of `resolved`, `unresolved`, `ambiguous` or `conflicting`. Candidates, evidence, confidence, resolver and warnings explain the decision without changing raw inference.
+The duplicated top-level `start`, `end`, `text`, `words`, `speaker` and `confidence` fields are
+the original Phase 4 values retained for straightforward v4-era consumers. `original` labels
+that contract explicitly. `effective` is derived from the original data plus review state; it
+is not new ML evidence.
 
-Manual evidence has confidence `1.0` because it represents authoritative user input, not model certainty. Exact anchor confidence is `0.99`; fuzzy confidence is the deterministic normalized string-similarity score. Candidate confidence from multiple anchors is `1 - product(1 - evidence confidence)`, capped at `0.999`. These are resolution-policy scores, not biometric probabilities.
+The root `review.cluster_assignments` stores manual identities for original diarization
+clusters. Effective speaker precedence is:
 
-An anonymous `SPEAKER_02` has a reliable Phase 3 cluster but no selected real identity. A null segment `speaker` is different: Phase 3 could not assign that speech to any cluster, so exporters show `UNKNOWN [?]`. Phase 4 never fills that null value from neighboring text.
+1. segment-level manual assignment;
+2. cluster-level manual identity;
+3. Phase 4 resolver identity;
+4. anonymous diarization cluster;
+5. Phase 3 `UNKNOWN [?]`.
 
-`raw/asr.json`, `raw/alignment.json`, `raw/diarization.json` and `raw/diarization.rttm` remain independent immutable stage artifacts. Full Phase 4 decisions are duplicated in `debug/speaker_mapping.json` for audit. Consumers must branch on `schema_version`; schema v3 artifacts remain valid historical outputs.
+All lower-precedence evidence remains present. In particular, resolving an `UNK_*` leaves its
+original speaker null and preserves the UNKNOWN ID.
+
+Deletion sets `review.status` to `deleted`; the original record remains in canonical JSON and
+review history, while human-readable exports omit it. Merging requires adjacent active
+segments. The earlier ID survives, its effective timestamps span all source segments, text and
+words retain source order, and the later record becomes `merged` with `merged_into` pointing to
+the survivor. Different effective speakers require an explicit merge assignment. Later IDs are
+never renumbered.
+
+`review/revisions.json` schema v1 contains ordered `REV_000001` operations with operation type,
+targets, before state, after/effective state, method and UTC timestamp. No operating-system user
+identity is inferred. It is intentionally sufficient for a future undo implementation.
+
+Schema v4 is migrated conservatively on the first saved review: original order becomes the
+stable `SEG_*` order, original null-speaker occurrences receive `UNK_*`, Phase 4 evidence
+segment references are remapped, and a `schema_migration` revision records the old-to-new ID
+map. Read-only list/show commands do not persist migration. Other historical schema versions
+are rejected rather than silently reinterpreted.
+
+`raw/asr.json`, `raw/alignment.json`, `raw/diarization.json`, `raw/diarization.rttm` and
+`debug/speaker_mapping.json` remain independent and immutable. Human review never rewrites
+them.

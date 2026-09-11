@@ -26,12 +26,14 @@ def test_canonical_transcript_is_versioned_and_typed():
         language="it",
         language_probability=0.98,
         source="meeting.wav",
-        segments=(TranscriptSegment("segment-000001", 1.0, 2.5, "Buongiorno."),),
+        segments=(
+            TranscriptSegment("SEG_000001", 1.0, 2.5, "Buongiorno.", unknown_id="UNK_000001"),
+        ),
     )
 
     payload = transcript.to_dict()
 
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert payload["meeting"]["language"] == "it"
     assert payload["speakers"] == []
     assert payload["segments"][0]["speaker"] is None
@@ -56,7 +58,7 @@ def test_schema_v4_serializes_identity_status_and_provenance():
         "frase tecnica sufficientemente specifica",
         0.99,
         "exact_normalized",
-        "segment-000001",
+        "SEG_000001",
     )
     speaker = Speaker(
         "SPEAKER_02",

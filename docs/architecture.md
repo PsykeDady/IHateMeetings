@@ -13,16 +13,26 @@ IHateMeetings is designed as a staged local-first pipeline:
 9. Optional reasoning over uncertain regions.
 10. Transcript reconstruction and export.
 
-Phase 4 implements media inspection, normalized temporary audio, ASR, optional word alignment, optional speaker diarization, temporal word attribution, conservative identity resolution and export. Its concrete flow is:
+Phases 0–4 implement media inspection, normalized temporary audio, ASR, optional word alignment, optional speaker diarization, temporal word attribution, conservative identity resolution and export. Phase 4.1 adds post-hoc review from an existing output directory. The concrete flow is:
 
 ```text
 source -> MediaInspection/MediaInfo -> temporary 16 kHz mono PCM
        -> ASRBackend/ASRResult -> AlignmentBackend/AlignmentResult
        -> DiarizationBackend/DiarizationResult -> temporal attribution
-       -> SpeakerResolver/ResolutionReport -> Transcript schema v4 -> exporters
+       -> SpeakerResolver/ResolutionReport -> Transcript schema v5 -> exporters
+
+existing output -> ReviewSession (no media/ML stages) -> explicit review overrides
+                -> atomic canonical/audit persistence -> reviewed exporters
 ```
 
 `FasterWhisperBackend` is the ASR implementation, `CTCAlignmentBackend` is the alignment implementation, and `PyannoteDiarizationBackend` wraps local Community-1 inference. `SpeakerResolver` is a separate interface; `ConservativeSpeakerResolver` combines explicit manual mappings and local textual-anchor evidence. Third-party values are immediately converted into typed immutable IHateMeetings models. Exporters only consume the canonical `Transcript`. FFprobe, ASR, alignment and diarization evidence are stored separately under `raw/`; speaker decisions live under `debug/`; normalized audio is temporary until cache/resume arrives in Phase 5.
+
+The post-hoc review package loads schema v4/v5 without invoking media, ASR, alignment or
+diarization backends. `ReviewSession` records immutable-style state transitions;
+the effective transcript is derived from original segments plus cluster and segment overrides.
+`review/revisions.json` is the durable operation log. Transactional persistence prepares all
+canonical and human-readable outputs before replacement and restores prior files if replacement
+fails. Interactive sessions stay in memory until explicit save.
 
 Speaker identity models are explicit: `SpeakerIdentity`, `IdentityEvidence`, `IdentityCandidate`, `Speaker`, and `ResolutionReport`. A `Speaker` always retains its diarization cluster and a resolution status. Only `resolved` speakers may contain a selected identity. Segment speaker nullability is not changed by identity resolution.
 

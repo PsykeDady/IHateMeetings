@@ -12,7 +12,7 @@ def sample_transcript() -> Transcript:
         source="sample.wav",
         segments=(
             TranscriptSegment(
-                "segment-000001",
+                "SEG_000001",
                 1.25,
                 3.5,
                 "Ciao a tutti.",
@@ -21,6 +21,7 @@ def sample_transcript() -> Transcript:
                     Word("a", 1.8, 1.9, 0.9),
                     Word("tutti.", 2.0, 2.5, 0.92),
                 ),
+                unknown_id="UNK_000001",
             ),
         ),
     )
@@ -37,7 +38,7 @@ def test_all_exporters_consume_canonical_transcript(tmp_path):
         "transcript.vtt",
     }
     payload = json.loads((tmp_path / "transcript.json").read_text())
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert payload["segments"][0]["words"][0]["text"] == "Ciao"
     assert "UNKNOWN [?]" in (tmp_path / "transcript.md").read_text()
     assert "00:00:01,250 --> 00:00:03,500" in (tmp_path / "transcript.srt").read_text()
@@ -50,7 +51,7 @@ def test_exporters_render_diarization_clusters_without_inventing_names(tmp_path)
         "en",
         0.99,
         "sample.wav",
-        (TranscriptSegment("segment-000001", 0.1, 1.0, "Hello.", speaker=Speaker("SPEAKER_00")),),
+        (TranscriptSegment("SEG_000001", 0.1, 1.0, "Hello.", speaker=Speaker("SPEAKER_00")),),
         (Speaker("SPEAKER_00"),),
     )
 
@@ -70,7 +71,7 @@ def test_all_human_exporters_render_only_a_resolved_display_name(tmp_path):
         "it",
         0.99,
         "sample.wav",
-        (TranscriptSegment("segment-000001", 0.1, 1.0, "Salve.", speaker=speaker),),
+        (TranscriptSegment("SEG_000001", 0.1, 1.0, "Salve.", speaker=speaker),),
         (speaker,),
     )
 
@@ -91,8 +92,8 @@ def test_unknown_attribution_is_not_relabelled_by_resolved_neighbor(tmp_path):
         0.99,
         "sample.wav",
         (
-            TranscriptSegment("segment-000001", 0.0, 0.8, "Confermato.", speaker=speaker),
-            TranscriptSegment("segment-000002", 0.8, 1.0, "Sì."),
+            TranscriptSegment("SEG_000001", 0.0, 0.8, "Confermato.", speaker=speaker),
+            TranscriptSegment("SEG_000002", 0.8, 1.0, "Sì.", unknown_id="UNK_000001"),
         ),
         (speaker,),
     )

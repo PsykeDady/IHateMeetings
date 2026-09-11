@@ -6,7 +6,7 @@ import re
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
@@ -183,7 +183,7 @@ def run_transcription(
     }
     base_segments = tuple(
         TranscriptSegment(
-            id=f"segment-{index:06d}",
+            id=f"SEG_{index:06d}",
             start=segment.start,
             end=segment.end,
             text=segment.text,
@@ -455,7 +455,13 @@ def _build_transcript(
     diarization: DiarizationResult,
 ) -> Transcript:
     if diarization.status != "completed":
-        return Transcript(duration, language, language_probability, source, segments)
+        return Transcript(
+            duration,
+            language,
+            language_probability,
+            source,
+            _assign_unknown_ids(segments),
+        )
     attributed = tuple(
         TranscriptSegment(
             segment.id,
@@ -473,7 +479,7 @@ def _build_transcript(
         language,
         language_probability,
         source,
-        rebuilt,
+        _assign_unknown_ids(rebuilt),
         tuple(Speaker(speaker_id) for speaker_id in speaker_ids),
     )
 
@@ -545,7 +551,7 @@ def _reconstruct_speaker_turns(
             merged.append(segment)
     return tuple(
         TranscriptSegment(
-            f"segment-{index:06d}",
+            f"SEG_{index:06d}",
             segment.start,
             segment.end,
             segment.text,
@@ -554,3 +560,17 @@ def _reconstruct_speaker_turns(
         )
         for index, segment in enumerate(merged, 1)
     )
+
+
+def _assign_unknown_ids(
+    segments: tuple[TranscriptSegment, ...],
+) -> tuple[TranscriptSegment, ...]:
+    unknown_index = 0
+    result: list[TranscriptSegment] = []
+    for segment in segments:
+        unknown_id = None
+        if segment.speaker is None:
+            unknown_index += 1
+            unknown_id = f"UNK_{unknown_index:06d}"
+        result.append(replace(segment, unknown_id=unknown_id))
+    return tuple(result)

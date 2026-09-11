@@ -76,7 +76,13 @@ IHateMeetings v1 officially supports exactly Italian (`it`) and English (`en`). 
 
 Italian speech containing English technical vocabulary is a first-class input. ASR always uses transcription rather than translation and IHateMeetings does not rewrite or Italianize terms such as `deploy`, `commit`, `merge`, `timeout`, `backend`, `frontend`, `Lambda`, `API Gateway`, `OpenSearch`, `DynamoDB`, `STAG`, `DEV` and `PROD`. The ASR contract already accepts typed glossary prompt terms for the future `glossary.yaml` stage; glossary processing is not implemented yet.
 
-Output is written to `output/<input-stem>/`. Raw FFprobe, ASR, alignment and diarization records remain separate in `raw/media.json`, `raw/asr.json`, `raw/alignment.json`, `raw/diarization.json` and `raw/diarization.rttm`; final exporters consume `transcript.json` schema version 4. Manual resolution evidence is stored separately in `debug/speaker_mapping.json`.
+Output is written to `output/<input-stem>/`. Raw FFprobe, ASR, alignment and diarization records remain separate in `raw/media.json`, `raw/asr.json`, `raw/alignment.json`, `raw/diarization.json` and `raw/diarization.rttm`; final exporters consume `transcript.json` schema version 5. Manual Phase 4 resolution evidence is stored separately in `debug/speaker_mapping.json`; post-hoc human changes are stored in `review/revisions.json` and never rewrite raw evidence.
+
+Existing outputs can be reviewed without rerunning inference. Use `ihm review list OUTPUT`,
+`ihm review show OUTPUT SEG_000001`, the explicit assignment/merge/delete subcommands, or
+`ihm review interactive OUTPUT`. Add `--unknown-only` to list or interactive review to focus on
+original Phase 3 UNKNOWN segments. See [the pipeline guide](docs/pipeline.md#post-hoc-review-phase-41)
+and [canonical schema v5](docs/canonical-schema.md) for commands, precedence and audit semantics.
 
 Verified identities can be assigned explicitly. A mapping automatically requests diarization and may be repeated:
 
@@ -155,7 +161,8 @@ uv run ihm transcribe meeting.mp3 --language it --model small --align --diarize
 2. Phase 1: complete — FFmpeg preprocessing, faster-whisper ASR, canonical JSON, Markdown/TXT/SRT/VTT export.
 3. Phase 2: complete — optional local word-level CTC alignment and schema v2.
 4. Phase 3: complete — optional local Community-1 diarization, cluster attribution and schema v3.
-5. Phase 4: complete — typed manual/anchor resolution, participant constraints, conflicts and schema v4.
-6. Phase 5: cache/resume, confidence engine and improved hardware profiles.
+5. Phase 4: complete — typed manual/anchor resolution and participant constraints.
+6. Phase 4.1: complete — stable segment/UNKNOWN IDs and transactional post-hoc review, schema v5.
+7. Phase 5: cache/resume, confidence engine and improved hardware profiles.
 
 Core transcription must remain local-first. Network-dependent features must be explicit, and meeting audio must never be uploaded silently.

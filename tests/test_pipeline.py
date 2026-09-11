@@ -121,6 +121,8 @@ def test_generated_audio_runs_through_real_media_pipeline(tmp_path):
     raw = json.loads((job_dir / "raw" / "asr.json").read_text())
     alignment = json.loads((job_dir / "raw" / "alignment.json").read_text())
     assert canonical["segments"][0]["text"] == "Fixture generata."
+    assert canonical["segments"][0]["id"] == "SEG_000001"
+    assert canonical["segments"][0]["unknown_id"] == "UNK_000001"
     assert raw["backend"] == "generated-fixture"
     assert alignment["status"] == "disabled"
     diarization = json.loads((job_dir / "raw" / "diarization.json").read_text())
@@ -234,7 +236,7 @@ def test_automatic_unsupported_language_warns_and_preserves_asr(tmp_path):
     shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
     reason="FFmpeg integration tools are unavailable",
 )
-def test_pipeline_writes_diarization_artifacts_and_schema_v4(tmp_path):
+def test_pipeline_writes_diarization_artifacts_and_schema_v5(tmp_path):
     source = tmp_path / "speakers.wav"
     with wave.open(str(source), "wb") as audio:
         audio.setnchannels(1)
@@ -270,7 +272,12 @@ def test_pipeline_writes_diarization_artifacts_and_schema_v4(tmp_path):
     assert "speaker" not in raw_alignment["segments"][0]["words"][0]
     assert raw_diarization["backend"] == "generated-diarization"
     assert "SPEAKER speakers 1 0.000 0.420" in (job_dir / "raw" / "diarization.rttm").read_text()
-    assert canonical["schema_version"] == 4
+    assert canonical["schema_version"] == 5
+    assert [segment["id"] for segment in canonical["segments"]] == [
+        "SEG_000001",
+        "SEG_000002",
+    ]
+    assert all(segment["unknown_id"] is None for segment in canonical["segments"])
     assert [speaker["cluster"] for speaker in canonical["speakers"]] == [
         "SPEAKER_00",
         "SPEAKER_01",

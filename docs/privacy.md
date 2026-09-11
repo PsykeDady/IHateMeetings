@@ -10,6 +10,12 @@ Meeting recordings may contain confidential information. IHateMeetings is local-
 
 Phase 4 sends no meeting or identity content over the network. FFmpeg, FFprobe, ASR, alignment, Community-1 inference and textual speaker resolution run locally. Network operations are limited to user-initiated model acquisition commands; they download model files and do not upload meeting data. Normal diarization sets Hugging Face offline mode, disables pyannote metrics, and passes audio directly as an in-memory waveform. IHateMeetings does not integrate pyannoteAI cloud APIs.
 
+Phase 4.1 review is also entirely local. Human overrides and their before/after audit records are
+stored under `review/revisions.json` in the meeting output directory. No operating-system
+username is inferred as an author. Review operations do not rewrite `raw/` inference artifacts
+or Phase 4 `debug/speaker_mapping.json`. Interactive discard (`Q`) writes nothing; saved review
+output uses private file permissions and transactional replacement.
+
 Participant names and cluster-to-identity mappings are sensitive meeting data. Anchor and context files stay local and are never logged wholesale or uploaded. No telemetry may contain audio, transcript content, participant names, speaker embeddings or voiceprints.
 
 Voice reference samples and embeddings are biometric-like sensitive data. Phase 4 defines only a future `VoiceEmbeddingBackend` boundary and the local storage location `~/.local/share/ihatemeetings/speakers/`; it does not enroll, extract or compare voiceprints. Future enrollment must be explicit, user-confirmed and removable. The storage helper creates its directory with mode `0700`, and meeting audio must never become a permanent profile automatically.

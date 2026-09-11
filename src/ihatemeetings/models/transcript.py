@@ -1,10 +1,87 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from ihatemeetings.models.speaker import Speaker
+from ihatemeetings.models.speaker import Speaker, SpeakerIdentity
+
+ReviewStatus = Literal["active", "deleted", "merged"]
+AssignmentKind = Literal["identity", "cluster"]
+
+
+@dataclass(frozen=True)
+class ReviewAssignment:
+    kind: AssignmentKind
+    identity: SpeakerIdentity | None = None
+    cluster: str | None = None
+    method: str = "explicit_user_input"
+
+    def __post_init__(self) -> None:
+        if self.kind == "identity" and (self.identity is None or self.cluster is not None):
+            raise ValueError("an identity assignment requires only an identity")
+        if self.kind == "cluster" and (not self.cluster or self.identity is not None):
+            raise ValueError("a cluster assignment requires only a cluster")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "identity": self.identity.to_dict() if self.identity else None,
+            "cluster": self.cluster,
+            "method": self.method,
+        }
+
+
+@dataclass(frozen=True)
+class SegmentReview:
+    status: ReviewStatus = "active"
+    accepted: bool = False
+    speaker_assignment: ReviewAssignment | None = None
+    merged_segment_ids: tuple[str, ...] = field(default_factory=tuple)
+    merged_into: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status == "merged" and not self.merged_into:
+            raise ValueError("a merged segment requires merged_into")
+        if self.status != "merged" and self.merged_into is not None:
+            raise ValueError("only a merged segment may set merged_into")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "accepted": self.accepted,
+            "speaker_assignment": (
+                self.speaker_assignment.to_dict() if self.speaker_assignment else None
+            ),
+            "merged_segment_ids": list(self.merged_segment_ids),
+            "merged_into": self.merged_into,
+        }
+
+
+@dataclass(frozen=True)
+class ClusterReview:
+    cluster: str
+    assignment: ReviewAssignment
+
+    def __post_init__(self) -> None:
+        if self.assignment.kind != "identity":
+            raise ValueError("cluster-wide review supports identity assignments only")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"cluster": self.cluster, "assignment": self.assignment.to_dict()}
+
+
+@dataclass(frozen=True)
+class TranscriptReview:
+    cluster_assignments: tuple[ClusterReview, ...] = field(default_factory=tuple)
+    migrated_from_schema: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "cluster_assignments": [item.to_dict() for item in self.cluster_assignments],
+            "migrated_from_schema": self.migrated_from_schema,
+        }
 
 
 @dataclass(frozen=True)
@@ -116,16 +193,24 @@ class TranscriptSegment:
     words: tuple[Word, ...] = field(default_factory=tuple)
     speaker: Speaker | None = None
     confidence: None = None
+    unknown_id: str | None = None
+    review: SegmentReview = field(default_factory=SegmentReview)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
+        original = {
             "start": self.start,
             "end": self.end,
             "text": self.text,
             "words": [word.to_dict() for word in self.words],
             "speaker": self.speaker.to_dict() if self.speaker else None,
             "confidence": self.confidence,
+        }
+        return {
+            "id": self.id,
+            "unknown_id": self.unknown_id,
+            **original,
+            "original": original,
+            "review": self.review.to_dict(),
         }
 
 
@@ -137,7 +222,30 @@ class Transcript:
     source: str
     segments: tuple[TranscriptSegment, ...] = field(default_factory=tuple)
     speakers: tuple[Speaker, ...] = field(default_factory=tuple)
-    schema_version: int = 4
+    schema_version: int = 5
+    review: TranscriptReview = field(default_factory=TranscriptReview)
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 5:
+            return
+        segment_numbers: list[int] = []
+        unknown_numbers: list[int] = []
+        for segment in self.segments:
+            match = re.fullmatch(r"SEG_(\d{6,})", segment.id)
+            if not match:
+                raise ValueError(f"invalid stable segment ID: {segment.id}")
+            segment_numbers.append(int(match.group(1)))
+            if (segment.speaker is None) != (segment.unknown_id is not None):
+                raise ValueError(f"inconsistent UNKNOWN provenance for {segment.id}")
+            if segment.unknown_id:
+                unknown_match = re.fullmatch(r"UNK_(\d{6,})", segment.unknown_id)
+                if not unknown_match:
+                    raise ValueError(f"invalid stable UNKNOWN ID: {segment.unknown_id}")
+                unknown_numbers.append(int(unknown_match.group(1)))
+        if segment_numbers != sorted(set(segment_numbers)):
+            raise ValueError("segment IDs must be unique and monotonically increasing")
+        if unknown_numbers != sorted(set(unknown_numbers)):
+            raise ValueError("UNKNOWN IDs must be unique and monotonically increasing")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -150,4 +258,5 @@ class Transcript:
             },
             "speakers": [speaker.to_dict() for speaker in self.speakers],
             "segments": [segment.to_dict() for segment in self.segments],
+            "review": self.review.to_dict(),
         }

@@ -33,20 +33,20 @@ def _anonymous_transcript() -> Transcript:
         "meeting.wav",
         (
             TranscriptSegment(
-                "segment-000001",
+                "SEG_000001",
                 0.0,
                 1.0,
                 f"{STRONG_PHRASE}.",
                 speaker=Speaker("SPEAKER_00"),
             ),
             TranscriptSegment(
-                "segment-000002",
+                "SEG_000002",
                 1.2,
                 2.0,
                 "Confermo la seconda attività pianificata.",
                 speaker=Speaker("SPEAKER_01"),
             ),
-            TranscriptSegment("segment-000003", 2.1, 2.3, "Sì."),
+            TranscriptSegment("SEG_000003", 2.1, 2.3, "Sì.", unknown_id="UNK_000001"),
         ),
         (Speaker("SPEAKER_00"), Speaker("SPEAKER_01")),
     )
