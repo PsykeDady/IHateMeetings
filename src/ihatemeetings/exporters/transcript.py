@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ihatemeetings.models import Transcript
+from ihatemeetings.models import Speaker, Transcript
 from ihatemeetings.utils.time import format_timestamp
 
 
@@ -37,13 +37,20 @@ def render_markdown(transcript: Transcript) -> str:
         "",
     ]
     for segment in transcript.segments:
-        lines.extend([f"### [{format_timestamp(segment.start)}] UNKNOWN [?]", "", segment.text, ""])
+        lines.extend(
+            [
+                f"### [{format_timestamp(segment.start)}] {_speaker_label(segment.speaker)}",
+                "",
+                segment.text,
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 
 def render_text(transcript: Transcript) -> str:
     return "\n\n".join(
-        f"[{format_timestamp(segment.start)}] UNKNOWN [?]\n{segment.text}"
+        f"[{format_timestamp(segment.start)}] {_speaker_label(segment.speaker)}\n{segment.text}"
         for segment in transcript.segments
     ) + ("\n" if transcript.segments else "")
 
@@ -53,7 +60,9 @@ def render_srt(transcript: Transcript) -> str:
     for index, segment in enumerate(transcript.segments, 1):
         start = _subtitle_timestamp(segment.start, comma=True)
         end = _subtitle_timestamp(segment.end, comma=True)
-        blocks.append(f"{index}\n{start} --> {end}\n{segment.text}")
+        blocks.append(
+            f"{index}\n{start} --> {end}\n{_subtitle_text(segment.text, segment.speaker)}"
+        )
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
@@ -62,13 +71,23 @@ def render_vtt(transcript: Transcript) -> str:
     for segment in transcript.segments:
         start = _subtitle_timestamp(segment.start, comma=False)
         end = _subtitle_timestamp(segment.end, comma=False)
-        blocks.append(f"{start} --> {end}\n{segment.text}")
+        blocks.append(f"{start} --> {end}\n{_subtitle_text(segment.text, segment.speaker)}")
     return "\n\n".join(blocks) + "\n"
 
 
 def _subtitle_timestamp(seconds: float, *, comma: bool) -> str:
     timestamp = format_timestamp(seconds, milliseconds=True)
     return timestamp.replace(".", ",") if comma else timestamp
+
+
+def _speaker_label(speaker: Speaker | None) -> str:
+    if speaker is None:
+        return "UNKNOWN [?]"
+    return speaker.name or speaker.cluster
+
+
+def _subtitle_text(text: str, speaker: Speaker | None) -> str:
+    return f"[{_speaker_label(speaker)}] {text}" if speaker is not None else text
 
 
 def _write_private(path: Path, content: str) -> None:

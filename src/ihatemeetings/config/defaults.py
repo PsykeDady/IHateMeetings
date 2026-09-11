@@ -16,6 +16,11 @@ class RuntimeConfig:
     compute_type: str | None = None
     align: bool | None = None
     alignment_model: str | None = None
+    diarize: bool | None = None
+    diarization_model: str | None = None
+    num_speakers: int | None = None
+    min_speakers: int | None = None
+    max_speakers: int | None = None
     output_dir: Path = Path("output")
     config_file: Path | None = None
 
@@ -30,6 +35,11 @@ class RuntimeConfig:
         compute_type: str | None = None,
         align: bool | None = None,
         alignment_model: str | None = None,
+        diarize: bool | None = None,
+        diarization_model: str | None = None,
+        num_speakers: int | None = None,
+        min_speakers: int | None = None,
+        max_speakers: int | None = None,
         output_dir: Path | None = None,
         config_file: Path | None = None,
     ) -> RuntimeConfig:
@@ -41,6 +51,11 @@ class RuntimeConfig:
             compute_type=compute_type or os.environ.get("IHM_COMPUTE_TYPE"),
             align=align if align is not None else _environment_bool("IHM_ALIGN"),
             alignment_model=alignment_model or os.environ.get("IHM_ALIGNMENT_MODEL"),
+            diarize=diarize if diarize is not None else _environment_bool("IHM_DIARIZE"),
+            diarization_model=diarization_model or os.environ.get("IHM_DIARIZATION_MODEL"),
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
             output_dir=output_dir or Path(os.environ.get("IHM_OUTPUT_DIR", "output")),
             config_file=config_file,
         )

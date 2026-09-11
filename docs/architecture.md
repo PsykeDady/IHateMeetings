@@ -13,15 +13,18 @@ IHateMeetings is designed as a staged local-first pipeline:
 9. Optional reasoning over uncertain regions.
 10. Transcript reconstruction and export.
 
-Phase 2 implements media inspection, normalized temporary audio, ASR, optional word alignment and export. Its concrete flow is:
+Phase 3 implements media inspection, normalized temporary audio, ASR, optional word alignment, optional speaker diarization, temporal word attribution and export. Its concrete flow is:
 
 ```text
 source -> MediaInspection/MediaInfo -> temporary 16 kHz mono PCM
        -> ASRBackend/ASRResult -> AlignmentBackend/AlignmentResult
-       -> Transcript schema v2 -> exporters
+       -> DiarizationBackend/DiarizationResult -> temporal attribution
+       -> Transcript schema v3 -> exporters
 ```
 
-`FasterWhisperBackend` is the ASR implementation. `CTCAlignmentBackend` is the first alignment implementation and uses a language-specific Transformers CTC model. Both immediately convert third-party values into typed immutable IHateMeetings models. Exporters only consume the canonical `Transcript`, never backend output. FFprobe, ASR and alignment evidence are stored separately under `raw/`; normalized audio is temporary until cache/resume arrives in Phase 5.
+`FasterWhisperBackend` is the ASR implementation, `CTCAlignmentBackend` is the alignment implementation, and `PyannoteDiarizationBackend` wraps local Community-1 inference. Third-party values are immediately converted into typed immutable IHateMeetings models. Exporters only consume the canonical `Transcript`. FFprobe, ASR, alignment and diarization evidence are stored separately under `raw/`; normalized audio is temporary until cache/resume arrives in Phase 5.
+
+Word attribution aggregates temporal overlap per speaker. A unique winner must cover at least half the word and at least 60% of all candidate overlap. Exact overlap ties stay unassigned. A gap of at most 250 ms is bridged only when the nearest turns on both sides belong to the same cluster. Candidate overlaps and the selected method remain in canonical word provenance. Regular pyannote diarization, rather than its exclusive view, preserves overlapping speech.
 
 CPU INT8 is a required and tested selection path. CUDA FP16 is selected only when CTranslate2 reports an accessible CUDA device. Manual device and compute-type overrides remain available.
 

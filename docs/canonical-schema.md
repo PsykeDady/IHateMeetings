@@ -1,37 +1,55 @@
-# Canonical transcript schema v2
+# Canonical transcript schema v3
 
-`transcript.json` is the canonical final Phase 2 representation. All text and subtitle exporters consume the same typed `Transcript` object.
+`transcript.json` is the canonical final Phase 3 representation. All text and subtitle exporters consume the same typed `Transcript` object.
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "meeting": {
     "source": "meeting.mp3",
     "duration": 42.5,
     "language": "it",
     "language_probability": 0.98
   },
-  "speakers": [],
+  "speakers": [
+    {"cluster": "SPEAKER_00", "name": null, "confidence": null}
+  ],
   "segments": [
     {
       "id": "segment-000001",
       "start": 0.5,
       "end": 3.2,
       "text": "Buongiorno a tutti.",
-      "speaker": null,
+      "speaker": {"cluster": "SPEAKER_00", "name": null, "confidence": null},
       "confidence": null,
       "words": [
         {
           "text": "Buongiorno",
           "start": 0.52,
           "end": 1.18,
-          "confidence": 0.91
+          "confidence": 0.91,
+          "speaker": {
+            "speaker_id": "SPEAKER_00",
+            "method": "temporal_overlap",
+            "overlap": 0.66,
+            "word_coverage": 1.0,
+            "candidates": [
+              {"speaker_id": "SPEAKER_00", "overlap": 0.66}
+            ]
+          }
         },
         {
           "text": "a",
           "start": null,
           "end": null,
-          "confidence": null
+          "confidence": null,
+          "speaker": {
+            "speaker_id": null,
+            "method": "missing_word_timestamps",
+            "overlap": 0.0,
+            "word_coverage": 0.0,
+            "candidates": []
+          }
         }
       ]
     }
@@ -39,6 +57,8 @@
 }
 ```
 
-Schema v2 is additive relative to v1: every segment gains a `words` array, while existing meeting and segment fields retain their meaning. Consumers should branch on `schema_version`; v1 documents remain readable by clients that do not require words.
+Schema v3 is additive relative to v2 at word and meeting level: words gain nullable speaker-attribution provenance, and `speakers` lists anonymous diarization clusters. Diarization can also split one ASR segment into multiple human-readable speaker turns. Existing meeting and segment fields retain their meanings. Consumers must branch on `schema_version`; v1/v2 documents remain readable by clients that do not require Phase 3 fields.
 
-Times are seconds from the start of the prepared meeting audio. A word's start and end are either both available or both null; confidence may independently be null when a backend cannot supply it. Null timing means that the word could not be aligned, not that its position was estimated. Segment `speaker` and `confidence` remain null because Phase 2 does not implement diarization or a transcript confidence engine. Backend evidence stays immutable in `raw/asr.json`; alignment evidence is stored separately in `raw/alignment.json`.
+Times are seconds from the start of the prepared meeting audio. A word's start and end are either both available or both null; confidence may independently be null when a backend cannot supply it. Null speaker assignment means the temporal evidence was absent or ambiguous, not that a hidden identity was inferred. Cluster `name` and cluster confidence remain null because Phase 3 does not implement speaker identification or a transcript confidence engine.
+
+`raw/asr.json`, `raw/alignment.json`, `raw/diarization.json` and `raw/diarization.rttm` are independent immutable stage artifacts. Attribution provenance exists only in canonical v3 output and never mutates ASR/alignment evidence. If diarization is disabled or unavailable, Phase 2 segment structure and text remain intact, speakers stay empty/null, and the raw diarization status explains why.

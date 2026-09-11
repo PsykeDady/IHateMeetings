@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: uv sync --python 3.13 --extra dev --extra alignment
+      - run: uv sync --python 3.13 --extra dev --extra alignment --extra diarization
       - run: uv run ruff check src tests
       - run: uv run pytest
       - run: uv run ihm --help

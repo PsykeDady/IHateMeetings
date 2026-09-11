@@ -25,7 +25,18 @@ class AlignmentSegment:
     words: tuple[Word, ...]
 
     def to_dict(self) -> dict[str, Any]:
-        return {**asdict(self), "words": [word.to_dict() for word in self.words]}
+        return {
+            **asdict(self),
+            "words": [
+                {
+                    "text": word.text,
+                    "start": word.start,
+                    "end": word.end,
+                    "confidence": word.confidence,
+                }
+                for word in self.words
+            ],
+        }
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,7 @@ Ground-truth text in the private manifest enables normalized WER and CER reporti
 ```bash
 uv run env IHM_RUN_REAL_ASR=1 IHM_TEST_MODEL=small pytest -m real_asr -v -s
 uv run env IHM_RUN_REAL_ALIGNMENT=1 IHM_TEST_MODEL=small pytest -m real_alignment -v -s
+uv run env IHM_RUN_REAL_DIARIZATION=1 pytest -m real_diarization -v -s
 ```
 
 Normalization uses Unicode NFKC, case folding, punctuation removal and whitespace collapse. WER operates on normalized words; CER operates on the normalized string including spaces. Alignment tests also prove that canonical text equals immutable raw ASR text.

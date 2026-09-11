@@ -19,9 +19,10 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 uv python install 3.13
-uv sync --python 3.13 --extra dev --extra alignment
+uv sync --python 3.13 --extra dev --extra alignment --extra diarization
 
-echo "Phase 2 runtime dependencies are ready."
+echo "Phase 3 runtime dependencies are ready."
 echo "Download a model explicitly: uv run ihm models download small"
 echo "Download an alignment model explicitly: uv run ihm models download-alignment it"
+echo "Optional gated diarization setup: HF_TOKEN=... uv run ihm models download-diarization"
 echo "Then validate with: uv run ihm doctor"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import unicodedata
 import wave
 from difflib import SequenceMatcher
@@ -13,6 +14,11 @@ import pytest
 from ihatemeetings.alignment.models import is_alignment_model_cached
 from ihatemeetings.asr.models import is_model_cached
 from ihatemeetings.config.defaults import RuntimeConfig
+from ihatemeetings.diarization import DiarizationOptions, PyannoteDiarizationBackend
+from ihatemeetings.diarization.models import (
+    is_diarization_model_cached,
+    resolve_diarization_model,
+)
 from ihatemeetings.metrics import character_error_rate, word_error_rate
 from ihatemeetings.pipeline import run_transcription
 
@@ -129,8 +135,40 @@ def test_real_cpu_alignment_on_private_italian_samples(filename, tmp_path):
     )
     assert matches >= expected["minimum_keyword_matches"], normalized_recognized
     print(
-        f"{filename} aligned: WER={word_error_rate(expected['text'], recognized):.4f} "
-        f"CER={character_error_rate(expected['text'], recognized):.4f}"
+        f"{filename} aligned: "
+        f"WER={word_error_rate(expected['text'], normalized_recognized):.4f} "
+        f"CER={character_error_rate(expected['text'], normalized_recognized):.4f}"
+    )
+
+
+@pytest.mark.real_diarization
+@pytest.mark.parametrize("filename", tuple(MANIFEST)[:1])
+def test_real_pyannote_cpu_diarization_on_private_sample(filename):
+    if os.environ.get("IHM_RUN_REAL_DIARIZATION") != "1":
+        pytest.skip("set IHM_RUN_REAL_DIARIZATION=1 to enable local pyannote inference")
+    if not is_diarization_model_cached():
+        pytest.skip("Community-1 is not prepared; run 'ihm models download-diarization'")
+    model_path, model_name = resolve_diarization_model()
+    audio_path = FIXTURE_DIR / filename
+    started = time.monotonic()
+    result = PyannoteDiarizationBackend().diarize(
+        audio_path,
+        DiarizationOptions(model_path, model_name, "cpu"),
+    )
+    elapsed = time.monotonic() - started
+
+    assert result.status == "completed"
+    assert result.turns
+    duration = MANIFEST[filename]["duration"]
+    assert all(0 <= turn.start <= turn.end <= duration + 0.25 for turn in result.turns)
+    assert all(
+        current.start <= following.start
+        for current, following in zip(result.turns, result.turns[1:])
+    )
+    speakers = {turn.speaker_id for turn in result.turns}
+    print(
+        f"{filename}: audio={duration:.2f}s diarization={elapsed:.2f}s "
+        f"speakers={len(speakers)} turns={len(result.turns)}"
     )
 
 

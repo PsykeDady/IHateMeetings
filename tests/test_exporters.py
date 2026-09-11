@@ -1,7 +1,7 @@
 import json
 
 from ihatemeetings.exporters.transcript import export_all
-from ihatemeetings.models import Transcript, TranscriptSegment, Word
+from ihatemeetings.models import Speaker, Transcript, TranscriptSegment, Word
 
 
 def sample_transcript() -> Transcript:
@@ -37,8 +37,26 @@ def test_all_exporters_consume_canonical_transcript(tmp_path):
         "transcript.vtt",
     }
     payload = json.loads((tmp_path / "transcript.json").read_text())
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["segments"][0]["words"][0]["text"] == "Ciao"
     assert "UNKNOWN [?]" in (tmp_path / "transcript.md").read_text()
     assert "00:00:01,250 --> 00:00:03,500" in (tmp_path / "transcript.srt").read_text()
     assert (tmp_path / "transcript.vtt").read_text().startswith("WEBVTT\n")
+
+
+def test_exporters_render_diarization_clusters_without_inventing_names(tmp_path):
+    transcript = Transcript(
+        2.0,
+        "en",
+        0.99,
+        "sample.wav",
+        (TranscriptSegment("segment-000001", 0.1, 1.0, "Hello.", speaker=Speaker("SPEAKER_00")),),
+        (Speaker("SPEAKER_00"),),
+    )
+
+    export_all(transcript, tmp_path)
+
+    assert "SPEAKER_00" in (tmp_path / "transcript.md").read_text()
+    assert "[SPEAKER_00] Hello." in (tmp_path / "transcript.srt").read_text()
+    assert "[SPEAKER_00] Hello." in (tmp_path / "transcript.vtt").read_text()
+    assert "Davide" not in (tmp_path / "transcript.txt").read_text()

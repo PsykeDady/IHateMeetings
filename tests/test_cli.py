@@ -55,3 +55,19 @@ def test_explicit_unsupported_language_is_rejected(tmp_path, capsys):
 
     assert main([str(source), "--language", "fr"]) == 2
     assert "invalid choice" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "arguments,message",
+    (
+        (["--num-speakers", "2", "--min-speakers", "1"], "cannot be combined"),
+        (["--min-speakers", "3", "--max-speakers", "2"], "cannot be greater"),
+        (["--no-diarize", "--num-speakers", "2"], "cannot be used"),
+    ),
+)
+def test_invalid_diarization_options_are_rejected(tmp_path, capsys, arguments, message):
+    source = tmp_path / "meeting.wav"
+    source.touch()
+
+    assert main([str(source), *arguments]) == 2
+    assert message in capsys.readouterr().out

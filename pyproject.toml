@@ -1,6 +1,6 @@
 [project]
 name = "ihatemeetings"
-version = "0.3.1"
+version = "0.4.0"
 description = "Local-first intelligent meeting transcription."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -16,6 +16,11 @@ dependencies = [
 alignment = [
   "torch==2.14.0",
   "transformers==5.16.1",
+]
+diarization = [
+  "pyannote-audio==4.0.7",
+  "torchaudio==2.11.0",
+  "torchcodec==0.16.0",
 ]
 dev = [
   "pytest>=8.0",
@@ -37,6 +42,7 @@ addopts = "-q"
 markers = [
   "real_asr: runs local faster-whisper inference and requires an explicitly cached model",
   "real_alignment: runs local CTC word alignment and requires explicitly cached models",
+  "real_diarization: runs local pyannote diarization and requires an explicitly cached model",
 ]
 
 [tool.ruff]
@@ -50,3 +56,5 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+torchcodec = { index = "pytorch-cpu" }

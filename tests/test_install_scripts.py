@@ -7,9 +7,12 @@ def test_platform_installers_sync_project_environment():
     for name in ("arch.sh", "ubuntu.sh", "fedora.sh"):
         text = (root / "install" / name).read_text(encoding="utf-8")
         assert "uv python install 3.13" in text
-        assert "uv sync --python 3.13 --extra dev --extra alignment" in text
+        assert (
+            "uv sync --python 3.13 --extra dev --extra alignment --extra diarization" in text
+        )
         assert "models download small" in text
         assert "models download-alignment it" in text
+        assert "models download-diarization" in text
 
 
 def test_uninstall_script_is_documented_and_conservative():

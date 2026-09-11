@@ -40,13 +40,21 @@ Upstream references:
 - https://pypi.org/project/torch/
 - https://pypi.org/project/transformers/
 
-## Phase 3 compatibility preview
+## Phase 3 diarization
 
-No diarization dependency is installed in Phase 2. Current pyannote-audio main declares Python `>=3.10`, PyTorch `>=2.8`, torchaudio `>=2.8` and TorchCodec `>=0.7`, so Python 3.13 is not excluded and the current PyTorch 2.14 lower bound is compatible. Phase 3 must nevertheless validate an exact matching torch/torchaudio/TorchCodec set on CPU before changing this lockfile.
+Phase 3 pins `pyannote-audio==4.0.7` behind `DiarizationBackend`, with Community-1 revision `3533c8cf8e369892e6b79ff1bf80f7b0286a54ee` as the first model. pyannote.audio is MIT licensed; `pyannote/speaker-diarization-community-1` weights are CC-BY-4.0. The model is gated: the user must accept its Hugging Face conditions, share the requested contact information, and provide a read token for explicit acquisition. IHateMeetings neither accepts terms nor authenticates silently.
 
-The current `pyannote/speaker-diarization-community-1` model is CC-BY-4.0 and supports offline inference after acquisition, but downloading it requires accepting Hugging Face conditions, sharing contact information and using an access token. That gated acquisition and pyannote-audio's OpenTelemetry dependencies require an explicit privacy/telemetry review in Phase 3; no token, model or telemetry integration is introduced here.
+The resolved runtime uses `torch==2.14.0+cpu`, `torchaudio==2.11.0+cpu` and `torchcodec==0.16.0+cpu` on CPython 3.13.15. A pre-lock binary test imported this exact set successfully. The ordinary PyPI torchaudio 2.11 wheel was rejected because it linked `libcudart.so.13` on this CPU host; `uv` therefore sources torch, torchaudio and TorchCodec from the official PyTorch CPU index. TorchAudio 2.11's stable ABI supports PyTorch 2.11 and later, and TorchCodec 0.16 documents Python 3.10–3.14 with PyTorch 2.11 or later.
 
-Preview references:
+Community-1 runs locally on CPU by default and supports exact/minimum/maximum speaker-count hints. Upstream returns both regular and exclusive diarization; IHateMeetings consumes regular diarization so overlapping turns remain representable. Community-1 can be cloned/downloaded and loaded from local disk for offline use. Normal IHateMeetings inference additionally sets `HF_HUB_OFFLINE=1` and `PYANNOTE_METRICS_ENABLED=0`, and supplies a local waveform rather than a remote URI. pyannoteAI cloud services are not integrated.
 
+`HF_TOKEN=... ihm models download-diarization` explicitly downloads and prepares Community-1. The token is not persisted by IHateMeetings. The current Hugging Face repository reports 33,682,422 bytes (about 34 MB) of model files; Python/ML runtime dependencies use separate storage and actual cache use can vary with upstream revisions.
+
+Upstream references:
+
+- https://pypi.org/project/pyannote-audio/4.0.7/
 - https://github.com/pyannote/pyannote-audio/blob/main/pyproject.toml
+- https://github.com/pyannote/pyannote-audio/blob/main/LICENSE
 - https://huggingface.co/pyannote/speaker-diarization-community-1
+- https://docs.pytorch.org/audio/main/installation.html
+- https://github.com/meta-pytorch/torchcodec#installing-torchcodec

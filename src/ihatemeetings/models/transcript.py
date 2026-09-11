@@ -55,17 +55,24 @@ class ASRResult:
 
 
 @dataclass(frozen=True)
-class TranscriptSegment:
-    id: str
-    start: float
-    end: float
-    text: str
-    words: tuple[Word, ...] = field(default_factory=tuple)
-    speaker: None = None
-    confidence: None = None
+class SpeakerCandidate:
+    speaker_id: str
+    overlap: float
+
+
+@dataclass(frozen=True)
+class WordSpeakerAssignment:
+    speaker_id: str | None
+    method: str
+    overlap: float = 0.0
+    word_coverage: float = 0.0
+    candidates: tuple[SpeakerCandidate, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
-        return {**asdict(self), "words": [word.to_dict() for word in self.words]}
+        return {
+            **asdict(self),
+            "candidates": [asdict(candidate) for candidate in self.candidates],
+        }
 
 
 @dataclass(frozen=True)
@@ -74,6 +81,7 @@ class Word:
     start: float | None
     end: float | None
     confidence: float | None
+    speaker: WordSpeakerAssignment | None = None
 
     def __post_init__(self) -> None:
         if (self.start is None) != (self.end is None):
@@ -88,7 +96,42 @@ class Word:
             raise ValueError("word confidence must be between zero and one")
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "text": self.text,
+            "start": self.start,
+            "end": self.end,
+            "confidence": self.confidence,
+            "speaker": self.speaker.to_dict() if self.speaker else None,
+        }
+
+
+@dataclass(frozen=True)
+class Speaker:
+    cluster: str
+    name: str | None = None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class TranscriptSegment:
+    id: str
+    start: float
+    end: float
+    text: str
+    words: tuple[Word, ...] = field(default_factory=tuple)
+    speaker: Speaker | None = None
+    confidence: None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "start": self.start,
+            "end": self.end,
+            "text": self.text,
+            "words": [word.to_dict() for word in self.words],
+            "speaker": asdict(self.speaker) if self.speaker else None,
+            "confidence": self.confidence,
+        }
 
 
 @dataclass(frozen=True)
@@ -98,7 +141,8 @@ class Transcript:
     language_probability: float | None
     source: str
     segments: tuple[TranscriptSegment, ...] = field(default_factory=tuple)
-    schema_version: int = 2
+    speakers: tuple[Speaker, ...] = field(default_factory=tuple)
+    schema_version: int = 3
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -109,6 +153,6 @@ class Transcript:
                 "language": self.language,
                 "language_probability": self.language_probability,
             },
-            "speakers": [],
+            "speakers": [asdict(speaker) for speaker in self.speakers],
             "segments": [segment.to_dict() for segment in self.segments],
         }

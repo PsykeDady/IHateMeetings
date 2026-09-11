@@ -15,6 +15,12 @@ from ihatemeetings.alignment.models import (
 )
 from ihatemeetings.asr.models import MODELS, download_model, is_model_cached, model_cache_dir
 from ihatemeetings.config.defaults import RuntimeConfig
+from ihatemeetings.diarization.models import (
+    COMMUNITY_1,
+    diarization_cache_dir,
+    download_diarization_model,
+    is_diarization_model_cached,
+)
 from ihatemeetings.errors import IHMError
 from ihatemeetings.languages import SUPPORTED_LANGUAGES
 from ihatemeetings.pipeline import run_transcription
@@ -79,6 +85,10 @@ def build_parser() -> argparse.ArgumentParser:
         "download-alignment", help="Explicitly download a language alignment model."
     )
     alignment_download.add_argument("language", choices=tuple(ALIGNMENT_MODELS))
+    model_subcommands.add_parser(
+        "download-diarization",
+        help="Explicitly acquire gated pyannote Community-1 assets using HF_TOKEN.",
+    )
     models.set_defaults(command="models")
 
     speakers = subparsers.add_parser("speakers", help="Manage local speaker identities.")
@@ -118,6 +128,16 @@ def add_transcribe_arguments(parser: argparse.ArgumentParser, positional: bool =
         "--alignment-model", help="Path to a local Transformers CTC alignment model."
     )
     parser.add_argument(
+        "--diarize",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable speaker diarization (default: use it when locally ready).",
+    )
+    parser.add_argument("--diarization-model", help="Path to a prepared local pyannote model.")
+    parser.add_argument("--num-speakers", type=_positive_int, help="Exact known speaker count.")
+    parser.add_argument("--min-speakers", type=_positive_int, help="Minimum expected speakers.")
+    parser.add_argument("--max-speakers", type=_positive_int, help="Maximum expected speakers.")
+    parser.add_argument(
         "--output-dir", type=Path, default=None, help="Output root directory (default: output)."
     )
     parser.add_argument("--config", type=Path, help="Optional configuration file.")
@@ -139,7 +159,23 @@ def handle_transcribe(args: argparse.Namespace) -> int:
         return 2
     phase2_options = [args.context, args.anchors, args.glossary]
     if any(phase2_options):
-        print("Context, anchors and glossary processing is not supported in Phase 2.")
+        print("Context, anchors and glossary processing is not supported in Phase 3.")
+        return 2
+    if args.num_speakers is not None and (
+        args.min_speakers is not None or args.max_speakers is not None
+    ):
+        print("--num-speakers cannot be combined with --min-speakers or --max-speakers.")
+        return 2
+    if (
+        args.min_speakers is not None
+        and args.max_speakers is not None
+        and args.min_speakers > args.max_speakers
+    ):
+        print("--min-speakers cannot be greater than --max-speakers.")
+        return 2
+    speaker_hints = (args.num_speakers, args.min_speakers, args.max_speakers)
+    if args.diarize is False and any(value is not None for value in speaker_hints):
+        print("Speaker count hints cannot be used with --no-diarize.")
         return 2
 
     config = RuntimeConfig.from_sources(
@@ -150,6 +186,11 @@ def handle_transcribe(args: argparse.Namespace) -> int:
         compute_type=args.compute_type,
         align=args.align,
         alignment_model=args.alignment_model,
+        diarize=args.diarize,
+        diarization_model=args.diarization_model,
+        num_speakers=args.num_speakers,
+        min_speakers=args.min_speakers,
+        max_speakers=args.max_speakers,
         output_dir=args.output_dir,
         config_file=args.config,
     )
@@ -174,6 +215,14 @@ def handle_models(args: argparse.Namespace) -> int:
             status = "cached" if is_alignment_model_cached(language) else "not downloaded"
             print(f"{language:<18} {spec.approximate_size:<14} {spec.license:<12} {status}")
         print(f"Alignment cache: {alignment_cache_dir()}")
+        print()
+        print("Diarization model")
+        status = "cached" if is_diarization_model_cached() else "not downloaded"
+        print(
+            f"{COMMUNITY_1.name:<18} {COMMUNITY_1.approximate_size:<48} "
+            f"{COMMUNITY_1.license:<12} {status}"
+        )
+        print(f"Diarization cache: {diarization_cache_dir()}")
         print("No model weights are bundled or downloaded automatically.")
         return 0
     if args.models_command == "download":
@@ -193,6 +242,16 @@ def handle_models(args: argparse.Namespace) -> int:
         path = download_alignment_model(args.language)
         print(f"Alignment model ready: {path}")
         return 0
+    if args.models_command == "download-diarization":
+        print(
+            f"Acquiring {COMMUNITY_1.repository} ({COMMUNITY_1.approximate_size}, "
+            f"{COMMUNITY_1.license}, gated)."
+        )
+        print("This requires accepted Hugging Face conditions and HF_TOKEN in the environment.")
+        print("Model assets are downloaded explicitly; meeting media is never uploaded.")
+        path = download_diarization_model()
+        print(f"Diarization model ready for offline use: {path}")
+        return 0
     return 2
 
 
@@ -206,6 +265,13 @@ def handle_speakers(args: argparse.Namespace) -> int:
 def configure_logging(verbose: bool = False, debug: bool = False) -> None:
     level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
     logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def normalize_argv(argv: list[str] | None) -> list[str] | None:

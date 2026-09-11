@@ -1,5 +1,13 @@
+import pytest
+
 from ihatemeetings.alignment.models import ALIGNMENT_MODELS, _model_files, alignment_cache_dir
 from ihatemeetings.asr.models import model_cache_dir
+from ihatemeetings.diarization.models import (
+    diarization_cache_dir,
+    download_diarization_model,
+    is_diarization_model_cached,
+)
+from ihatemeetings.errors import IHMError
 from ihatemeetings.models import ASRResult, ASRSegment, Transcript, TranscriptSegment, Word
 
 
@@ -14,7 +22,7 @@ def test_canonical_transcript_is_versioned_and_typed():
 
     payload = transcript.to_dict()
 
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["meeting"]["language"] == "it"
     assert payload["speakers"] == []
     assert payload["segments"][0]["speaker"] is None
@@ -29,6 +37,7 @@ def test_aligned_word_serialization():
         "start": 1.25,
         "end": 1.83,
         "confidence": 0.91,
+        "speaker": None,
     }
 
 
@@ -61,6 +70,7 @@ def test_model_cache_respects_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     assert model_cache_dir() == tmp_path / "ihatemeetings" / "models"
     assert alignment_cache_dir() == tmp_path / "ihatemeetings" / "alignment"
+    assert diarization_cache_dir() == tmp_path / "ihatemeetings" / "diarization"
 
 
 def test_alignment_download_selects_one_weight_format_per_model():
@@ -71,3 +81,21 @@ def test_alignment_download_selects_one_weight_format_per_model():
     assert "pytorch_model.bin" not in english_files
     assert "pytorch_model.bin" in italian_files
     assert "model.safetensors" not in italian_files
+
+
+def test_diarization_model_requires_explicit_token(monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    with pytest.raises(IHMError, match="HF_TOKEN"):
+        download_diarization_model()
+
+
+def test_diarization_model_readiness_uses_prepared_marker(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    assert not is_diarization_model_cached()
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "config.yaml").write_text("pipeline: test\n", encoding="utf-8")
+    cache = diarization_cache_dir()
+    cache.mkdir(parents=True)
+    (cache / "community-1.ready").write_text(str(model), encoding="utf-8")
+    assert is_diarization_model_cached()

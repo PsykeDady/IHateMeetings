@@ -25,6 +25,18 @@ from ihatemeetings.alignment.models import (
 from ihatemeetings.asr import ASRBackend, ASROptions, FasterWhisperBackend
 from ihatemeetings.asr.models import PROFILE_MODELS, resolve_local_model
 from ihatemeetings.config.defaults import RuntimeConfig
+from ihatemeetings.diarization import (
+    DiarizationBackend,
+    DiarizationOptions,
+    DiarizationParameters,
+    DiarizationResult,
+    PyannoteDiarizationBackend,
+    attribute_words,
+)
+from ihatemeetings.diarization.models import (
+    diarization_runtime_available,
+    resolve_diarization_model,
+)
 from ihatemeetings.errors import IHMError
 from ihatemeetings.exporters import export_all
 from ihatemeetings.languages import (
@@ -34,7 +46,7 @@ from ihatemeetings.languages import (
     unsupported_detection_warning,
 )
 from ihatemeetings.media import extract_audio, inspect_media
-from ihatemeetings.models import ASRSegment, Transcript, TranscriptSegment
+from ihatemeetings.models import ASRSegment, Speaker, Transcript, TranscriptSegment, Word
 from ihatemeetings.platform.compute import ComputeSelection, select_compute
 from ihatemeetings.utils.time import format_timestamp
 
@@ -78,10 +90,11 @@ def run_transcription(
     *,
     backend: ASRBackend | None = None,
     alignment_backend: AlignmentBackend | None = None,
+    diarization_backend: DiarizationBackend | None = None,
     emit: Callable[[str], None] = print,
 ) -> Path:
     reporter = ProgressReporter(emit)
-    inspection = reporter.run(1, 5, "Inspecting media", lambda: inspect_media(source))
+    inspection = reporter.run(1, 7, "Inspecting media", lambda: inspect_media(source))
     plan, _ = build_plan(config)
     model_path = resolve_local_model(plan.model)
     job_dir = config.output_dir / _safe_job_name(source)
@@ -99,11 +112,12 @@ def run_transcription(
     emit("ASR .............. faster-whisper")
     emit(f"Model ............ {plan.model}")
     emit(f"Alignment ........ {_alignment_plan_label(config.align)}")
+    emit(f"Diarization ...... {_diarization_plan_label(config.diarize)}")
     emit("")
 
-    with tempfile.TemporaryDirectory(prefix=".ihm-phase2-", dir=job_dir) as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=".ihm-phase3-", dir=job_dir) as temp_dir:
         audio_path = Path(temp_dir) / "audio.wav"
-        reporter.run(2, 5, "Preparing audio", lambda: extract_audio(source, audio_path))
+        reporter.run(2, 7, "Preparing audio", lambda: extract_audio(source, audio_path))
         options = ASROptions(
             model_path=model_path,
             model_name=plan.model,
@@ -113,7 +127,7 @@ def run_transcription(
         )
         asr_result = reporter.run(
             3,
-            5,
+            7,
             "Transcribing",
             lambda: (backend or FasterWhisperBackend()).transcribe(audio_path, options),
         )
@@ -127,7 +141,7 @@ def run_transcription(
             emit(f"Language warning: {language_warning}")
         alignment_result = reporter.run(
             4,
-            5,
+            7,
             "Aligning words",
             lambda: _align_words(
                 audio_path,
@@ -140,25 +154,46 @@ def run_transcription(
                 emit,
             ),
         )
+        diarization_result = reporter.run(
+            5,
+            7,
+            "Detecting speakers",
+            lambda: _diarize(
+                audio_path,
+                plan.device,
+                config,
+                diarization_backend,
+                emit,
+            ),
+        )
 
     _write_json(raw_dir / "alignment.json", alignment_result.to_dict())
+    _write_json(raw_dir / "diarization.json", diarization_result.to_dict())
+    _write_rttm(raw_dir / "diarization.rttm", source.stem, diarization_result)
     aligned_segments = {
         segment.segment_index: segment.words for segment in alignment_result.segments
     }
-    transcript = Transcript(
-        duration=inspection.info.duration,
-        language=detected_language,
-        language_probability=asr_result.language_probability,
-        source=source.name,
-        segments=tuple(
-            TranscriptSegment(
-                id=f"segment-{index:06d}",
-                start=segment.start,
-                end=segment.end,
-                text=segment.text,
-                words=aligned_segments.get(index - 1, ()),
-            )
-            for index, segment in enumerate(asr_result.segments, 1)
+    base_segments = tuple(
+        TranscriptSegment(
+            id=f"segment-{index:06d}",
+            start=segment.start,
+            end=segment.end,
+            text=segment.text,
+            words=aligned_segments.get(index - 1, ()),
+        )
+        for index, segment in enumerate(asr_result.segments, 1)
+    )
+    transcript = reporter.run(
+        6,
+        7,
+        "Attributing speakers",
+        lambda: _build_transcript(
+            inspection.info.duration,
+            detected_language,
+            asr_result.language_probability,
+            source.name,
+            base_segments,
+            diarization_result,
         ),
     )
 
@@ -193,17 +228,40 @@ def run_transcription(
                     "status": alignment_result.status,
                     "warnings": list(alignment_result.warnings),
                 },
+                "diarization": {
+                    "backend": diarization_result.backend,
+                    "backend_version": diarization_result.backend_version,
+                    "model": diarization_result.model,
+                    "status": diarization_result.status,
+                    "parameters": (
+                        diarization_result.parameters.to_dict()
+                        if diarization_result.parameters
+                        else {}
+                    ),
+                    "warnings": list(diarization_result.warnings),
+                },
             },
         )
         return outputs
 
-    reporter.run(5, 5, "Writing transcripts", write_outputs)
+    reporter.run(7, 7, "Writing transcripts", write_outputs)
     emit(f"Output ........... {job_dir}")
     return job_dir
 
 
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _write_rttm(path: Path, source_name: str, result: DiarizationResult) -> None:
+    file_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", source_name).strip(".-") or "meeting"
+    lines = [
+        f"SPEAKER {file_id} 1 {turn.start:.3f} {turn.end - turn.start:.3f} "
+        f"<NA> <NA> {turn.speaker_id} <NA> <NA>"
+        for turn in result.turns
+    ]
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
     path.chmod(0o600)
 
 
@@ -217,6 +275,12 @@ def _model_revision(model_path: Path) -> str | None:
 
 
 def _alignment_plan_label(requested: bool | None) -> str:
+    if requested is False:
+        return "disabled"
+    return "enabled" if requested is True else "automatic when locally available"
+
+
+def _diarization_plan_label(requested: bool | None) -> str:
     if requested is False:
         return "disabled"
     return "enabled" if requested is True else "automatic when locally available"
@@ -293,3 +357,169 @@ def _alignment_device(asr_device: str) -> str:
         return "cuda" if torch.cuda.is_available() else "cpu"
     except ImportError:
         return "cpu"
+
+
+def _diarize(
+    audio_path: Path,
+    asr_device: str,
+    config: RuntimeConfig,
+    backend: DiarizationBackend | None,
+    emit: Callable[[str], None],
+) -> DiarizationResult:
+    parameters = DiarizationParameters(
+        None, config.num_speakers, config.min_speakers, config.max_speakers
+    )
+    if config.diarize is False:
+        return DiarizationResult("none", "n/a", None, "disabled", parameters=parameters)
+    if backend is None and not diarization_runtime_available():
+        return _unavailable_diarization(
+            "diarization dependencies are not installed; run "
+            "'uv sync --python 3.13 --extra diarization'",
+            config,
+            emit,
+            parameters,
+        )
+    try:
+        model_path, model_name = resolve_diarization_model(config.diarization_model)
+        device = _alignment_device(asr_device)
+        return (backend or PyannoteDiarizationBackend()).diarize(
+            audio_path,
+            DiarizationOptions(
+                model_path,
+                model_name,
+                device,
+                config.num_speakers,
+                config.min_speakers,
+                config.max_speakers,
+            ),
+        )
+    except IHMError as exc:
+        detail = str(exc)
+        if exc.remediation:
+            detail = f"{detail} {exc.remediation}"
+        return _unavailable_diarization(detail, config, emit, parameters)
+
+
+def _unavailable_diarization(
+    reason: str,
+    config: RuntimeConfig,
+    emit: Callable[[str], None],
+    parameters: DiarizationParameters,
+) -> DiarizationResult:
+    status = "unavailable" if config.diarize is True else "skipped"
+    emit(f"Diarization {status}: {reason}")
+    return DiarizationResult(
+        "none", "n/a", None, status, warnings=(reason,), parameters=parameters
+    )
+
+
+def _build_transcript(
+    duration: float,
+    language: str | None,
+    language_probability: float | None,
+    source: str,
+    segments: tuple[TranscriptSegment, ...],
+    diarization: DiarizationResult,
+) -> Transcript:
+    if diarization.status != "completed":
+        return Transcript(duration, language, language_probability, source, segments)
+    attributed = tuple(
+        TranscriptSegment(
+            segment.id,
+            segment.start,
+            segment.end,
+            segment.text,
+            attribute_words(segment.words, diarization.turns),
+        )
+        for segment in segments
+    )
+    rebuilt = _reconstruct_speaker_turns(attributed)
+    speaker_ids = sorted({turn.speaker_id for turn in diarization.turns})
+    return Transcript(
+        duration,
+        language,
+        language_probability,
+        source,
+        rebuilt,
+        tuple(Speaker(speaker_id) for speaker_id in speaker_ids),
+    )
+
+
+def _reconstruct_speaker_turns(
+    segments: tuple[TranscriptSegment, ...],
+) -> tuple[TranscriptSegment, ...]:
+    rebuilt: list[TranscriptSegment] = []
+    for source_segment in segments:
+        words = source_segment.words
+        if not words or " ".join(word.text for word in words) != source_segment.text:
+            assignments = [word.speaker.speaker_id if word.speaker else None for word in words]
+            speaker_ids = set(assignments)
+            speaker = (
+                Speaker(assignments[0])
+                if assignments and None not in speaker_ids and len(speaker_ids) == 1
+                else None
+            )
+            rebuilt.append(
+                TranscriptSegment(
+                    "",
+                    source_segment.start,
+                    source_segment.end,
+                    source_segment.text,
+                    words,
+                    speaker,
+                )
+            )
+            continue
+        runs: list[list[Word]] = []
+        for word in words:
+            speaker_id = word.speaker.speaker_id if word.speaker else None
+            previous_id = (
+                runs[-1][-1].speaker.speaker_id if runs and runs[-1][-1].speaker else None
+            )
+            if not runs or previous_id != speaker_id:
+                runs.append([])
+            runs[-1].append(word)
+        for run in runs:
+            speaker_id = run[0].speaker.speaker_id if run[0].speaker else None
+            rebuilt.append(
+                TranscriptSegment(
+                    "",
+                    run[0].start if run[0].start is not None else source_segment.start,
+                    run[-1].end if run[-1].end is not None else source_segment.end,
+                    " ".join(word.text for word in run),
+                    tuple(run),
+                    Speaker(speaker_id) if speaker_id else None,
+                )
+            )
+    merged: list[TranscriptSegment] = []
+    for segment in rebuilt:
+        if (
+            merged
+            and segment.speaker is not None
+            and merged[-1].speaker == segment.speaker
+            and segment.start - merged[-1].end <= 1.0
+        ):
+            previous = merged.pop()
+            merged.append(
+                TranscriptSegment(
+                    "",
+                    previous.start,
+                    segment.end,
+                    f"{previous.text} {segment.text}",
+                    (*previous.words, *segment.words),
+                    segment.speaker,
+                )
+            )
+        else:
+            merged.append(segment)
+    return tuple(
+        TranscriptSegment(
+            f"segment-{index:06d}",
+            segment.start,
+            segment.end,
+            segment.text,
+            segment.words,
+            segment.speaker,
+        )
+        for index, segment in enumerate(merged, 1)
+    )

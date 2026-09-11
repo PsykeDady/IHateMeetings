@@ -6,6 +6,11 @@ from ihatemeetings.alignment.models import (
     is_alignment_model_cached,
 )
 from ihatemeetings.asr.models import MODELS, is_model_cached
+from ihatemeetings.diarization.models import (
+    COMMUNITY_1,
+    diarization_runtime_available,
+    is_diarization_model_cached,
+)
 from ihatemeetings.platform.compute import cuda_device_count
 from ihatemeetings.platform.detect import PlatformInfo, detect_platform
 
@@ -67,6 +72,12 @@ def render_doctor(info: PlatformInfo) -> str:
         f"- Runtime ........... {alignment_runtime_label()}",
         f"- Cached models ..... {cached_alignment_model_label()}",
         f"- Status ............ {alignment_status_label()}",
+        "",
+        "Diarization",
+        f"- pyannote.audio ..... {optional_label(info.packages['pyannote.audio'])}",
+        f"- Runtime ........... {diarization_runtime_label()}",
+        f"- Model ............. {diarization_model_label()}",
+        f"- Status ............ {diarization_status_label()}",
         "",
         "Optional",
         "- OCR ............... not installed (future phase)",
@@ -176,6 +187,28 @@ def alignment_status_label() -> str:
     if not cached_alignment_models():
         return "model required; run 'ihm models download-alignment it'"
     return "operational OK"
+
+
+def diarization_runtime_label() -> str:
+    return (
+        "OK (CPU supported)"
+        if diarization_runtime_available(verify_imports=True)
+        else "not installed or unusable (optional)"
+    )
+
+
+def diarization_model_label() -> str:
+    if is_diarization_model_cached():
+        return f"{COMMUNITY_1.name} cached"
+    return f"{COMMUNITY_1.name} not prepared (gated, {COMMUNITY_1.license})"
+
+
+def diarization_status_label() -> str:
+    if not diarization_runtime_available(verify_imports=True):
+        return "unavailable; run 'uv sync --python 3.13 --extra diarization'"
+    if not is_diarization_model_cached():
+        return "model required; run 'ihm models download-diarization' with HF_TOKEN"
+    return "operational OK (local/offline inference)"
 
 
 def mark(ok: bool) -> str:
