@@ -48,6 +48,11 @@ from ihatemeetings.languages import (
 from ihatemeetings.media import extract_audio, inspect_media
 from ihatemeetings.models import ASRSegment, Speaker, Transcript, TranscriptSegment, Word
 from ihatemeetings.platform.compute import ComputeSelection, select_compute
+from ihatemeetings.speakers.resolution import (
+    ConservativeSpeakerResolver,
+    SpeakerResolver,
+    apply_resolution,
+)
 from ihatemeetings.utils.time import format_timestamp
 
 T = TypeVar("T")
@@ -91,10 +96,11 @@ def run_transcription(
     backend: ASRBackend | None = None,
     alignment_backend: AlignmentBackend | None = None,
     diarization_backend: DiarizationBackend | None = None,
+    speaker_resolver: SpeakerResolver | None = None,
     emit: Callable[[str], None] = print,
 ) -> Path:
     reporter = ProgressReporter(emit)
-    inspection = reporter.run(1, 7, "Inspecting media", lambda: inspect_media(source))
+    inspection = reporter.run(1, 8, "Inspecting media", lambda: inspect_media(source))
     plan, _ = build_plan(config)
     model_path = resolve_local_model(plan.model)
     job_dir = config.output_dir / _safe_job_name(source)
@@ -113,11 +119,15 @@ def run_transcription(
     emit(f"Model ............ {plan.model}")
     emit(f"Alignment ........ {_alignment_plan_label(config.align)}")
     emit(f"Diarization ...... {_diarization_plan_label(config.diarize)}")
+    emit(
+        "Speaker resolution "
+        f"{'enabled' if config.speaker_resolution.requested else 'no evidence configured'}"
+    )
     emit("")
 
-    with tempfile.TemporaryDirectory(prefix=".ihm-phase3-", dir=job_dir) as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=".ihm-phase4-", dir=job_dir) as temp_dir:
         audio_path = Path(temp_dir) / "audio.wav"
-        reporter.run(2, 7, "Preparing audio", lambda: extract_audio(source, audio_path))
+        reporter.run(2, 8, "Preparing audio", lambda: extract_audio(source, audio_path))
         options = ASROptions(
             model_path=model_path,
             model_name=plan.model,
@@ -127,21 +137,19 @@ def run_transcription(
         )
         asr_result = reporter.run(
             3,
-            7,
+            8,
             "Transcribing",
             lambda: (backend or FasterWhisperBackend()).transcribe(audio_path, options),
         )
         _write_json(raw_dir / "asr.json", asr_result.to_dict())
         detected_language = normalize_language_code(asr_result.language)
         language_warning = unsupported_detection_warning(detected_language)
-        supported_language = (
-            detected_language if detected_language in SUPPORTED_LANGUAGES else None
-        )
+        supported_language = detected_language if detected_language in SUPPORTED_LANGUAGES else None
         if language_warning:
             emit(f"Language warning: {language_warning}")
         alignment_result = reporter.run(
             4,
-            7,
+            8,
             "Aligning words",
             lambda: _align_words(
                 audio_path,
@@ -156,7 +164,7 @@ def run_transcription(
         )
         diarization_result = reporter.run(
             5,
-            7,
+            8,
             "Detecting speakers",
             lambda: _diarize(
                 audio_path,
@@ -185,7 +193,7 @@ def run_transcription(
     )
     transcript = reporter.run(
         6,
-        7,
+        8,
         "Attributing speakers",
         lambda: _build_transcript(
             inspection.info.duration,
@@ -196,9 +204,24 @@ def run_transcription(
             diarization_result,
         ),
     )
+    resolution_report = reporter.run(
+        7,
+        8,
+        "Resolving identities",
+        lambda: (speaker_resolver or ConservativeSpeakerResolver()).resolve(
+            transcript, config.speaker_resolution
+        ),
+    )
+    transcript = apply_resolution(transcript, resolution_report)
 
     def write_outputs() -> object:
         outputs = export_all(transcript, job_dir)
+        debug_dir = job_dir / "debug"
+        debug_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        _write_json(
+            debug_dir / "speaker_mapping.json",
+            resolution_report.to_dict(),
+        )
         _write_json(
             job_dir / "metadata.json",
             {
@@ -240,11 +263,23 @@ def run_transcription(
                     ),
                     "warnings": list(diarization_result.warnings),
                 },
+                "speaker_resolution": {
+                    "resolver": resolution_report.resolver,
+                    "status": "completed" if resolution_report.requested else "not_requested",
+                    "resolved_clusters": sum(
+                        speaker.status == "resolved" for speaker in resolution_report.speakers
+                    ),
+                    "ambiguous_clusters": sum(
+                        speaker.status in {"ambiguous", "conflicting"}
+                        for speaker in resolution_report.speakers
+                    ),
+                    "warnings": list(resolution_report.warnings),
+                },
             },
         )
         return outputs
 
-    reporter.run(7, 7, "Writing transcripts", write_outputs)
+    reporter.run(8, 8, "Writing transcripts", write_outputs)
     emit(f"Output ........... {job_dir}")
     return job_dir
 
@@ -408,9 +443,7 @@ def _unavailable_diarization(
 ) -> DiarizationResult:
     status = "unavailable" if config.diarize is True else "skipped"
     emit(f"Diarization {status}: {reason}")
-    return DiarizationResult(
-        "none", "n/a", None, status, warnings=(reason,), parameters=parameters
-    )
+    return DiarizationResult("none", "n/a", None, status, warnings=(reason,), parameters=parameters)
 
 
 def _build_transcript(
@@ -473,9 +506,7 @@ def _reconstruct_speaker_turns(
         runs: list[list[Word]] = []
         for word in words:
             speaker_id = word.speaker.speaker_id if word.speaker else None
-            previous_id = (
-                runs[-1][-1].speaker.speaker_id if runs and runs[-1][-1].speaker else None
-            )
+            previous_id = runs[-1][-1].speaker.speaker_id if runs and runs[-1][-1].speaker else None
             if not runs or previous_id != speaker_id:
                 runs.append([])
             runs[-1].append(word)

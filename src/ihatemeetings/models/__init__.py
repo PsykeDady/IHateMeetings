@@ -1,8 +1,14 @@
+from ihatemeetings.models.speaker import (
+    IdentityCandidate,
+    IdentityEvidence,
+    ResolutionReport,
+    Speaker,
+    SpeakerIdentity,
+)
 from ihatemeetings.models.transcript import (
     ASRResult,
     ASRSegment,
     MediaInfo,
-    Speaker,
     SpeakerCandidate,
     Transcript,
     TranscriptSegment,
@@ -13,9 +19,13 @@ from ihatemeetings.models.transcript import (
 __all__ = [
     "ASRResult",
     "ASRSegment",
+    "IdentityCandidate",
+    "IdentityEvidence",
     "MediaInfo",
+    "ResolutionReport",
     "Speaker",
     "SpeakerCandidate",
+    "SpeakerIdentity",
     "Transcript",
     "TranscriptSegment",
     "Word",

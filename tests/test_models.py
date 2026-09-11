@@ -8,7 +8,16 @@ from ihatemeetings.diarization.models import (
     is_diarization_model_cached,
 )
 from ihatemeetings.errors import IHMError
-from ihatemeetings.models import ASRResult, ASRSegment, Transcript, TranscriptSegment, Word
+from ihatemeetings.models import (
+    ASRResult,
+    ASRSegment,
+    IdentityEvidence,
+    Speaker,
+    SpeakerIdentity,
+    Transcript,
+    TranscriptSegment,
+    Word,
+)
 
 
 def test_canonical_transcript_is_versioned_and_typed():
@@ -22,7 +31,7 @@ def test_canonical_transcript_is_versioned_and_typed():
 
     payload = transcript.to_dict()
 
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["meeting"]["language"] == "it"
     assert payload["speakers"] == []
     assert payload["segments"][0]["speaker"] is None
@@ -39,6 +48,30 @@ def test_aligned_word_serialization():
         "confidence": 0.91,
         "speaker": None,
     }
+
+
+def test_schema_v4_serializes_identity_status_and_provenance():
+    evidence = IdentityEvidence(
+        "text_anchor",
+        "frase tecnica sufficientemente specifica",
+        0.99,
+        "exact_normalized",
+        "segment-000001",
+    )
+    speaker = Speaker(
+        "SPEAKER_02",
+        SpeakerIdentity("participant-a", "Partecipante A"),
+        "resolved",
+        0.99,
+        "conservative-v1",
+        (evidence,),
+    )
+    payload = speaker.to_dict()
+
+    assert payload["cluster"] == "SPEAKER_02"
+    assert payload["identity"]["id"] == "participant-a"
+    assert payload["resolution"]["status"] == "resolved"
+    assert payload["resolution"]["evidence"][0]["method"] == "exact_normalized"
 
 
 def test_raw_asr_result_preserves_backend_evidence():

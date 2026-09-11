@@ -13,16 +13,20 @@ IHateMeetings is designed as a staged local-first pipeline:
 9. Optional reasoning over uncertain regions.
 10. Transcript reconstruction and export.
 
-Phase 3 implements media inspection, normalized temporary audio, ASR, optional word alignment, optional speaker diarization, temporal word attribution and export. Its concrete flow is:
+Phase 4 implements media inspection, normalized temporary audio, ASR, optional word alignment, optional speaker diarization, temporal word attribution, conservative identity resolution and export. Its concrete flow is:
 
 ```text
 source -> MediaInspection/MediaInfo -> temporary 16 kHz mono PCM
        -> ASRBackend/ASRResult -> AlignmentBackend/AlignmentResult
        -> DiarizationBackend/DiarizationResult -> temporal attribution
-       -> Transcript schema v3 -> exporters
+       -> SpeakerResolver/ResolutionReport -> Transcript schema v4 -> exporters
 ```
 
-`FasterWhisperBackend` is the ASR implementation, `CTCAlignmentBackend` is the alignment implementation, and `PyannoteDiarizationBackend` wraps local Community-1 inference. Third-party values are immediately converted into typed immutable IHateMeetings models. Exporters only consume the canonical `Transcript`. FFprobe, ASR, alignment and diarization evidence are stored separately under `raw/`; normalized audio is temporary until cache/resume arrives in Phase 5.
+`FasterWhisperBackend` is the ASR implementation, `CTCAlignmentBackend` is the alignment implementation, and `PyannoteDiarizationBackend` wraps local Community-1 inference. `SpeakerResolver` is a separate interface; `ConservativeSpeakerResolver` combines explicit manual mappings and local textual-anchor evidence. Third-party values are immediately converted into typed immutable IHateMeetings models. Exporters only consume the canonical `Transcript`. FFprobe, ASR, alignment and diarization evidence are stored separately under `raw/`; speaker decisions live under `debug/`; normalized audio is temporary until cache/resume arrives in Phase 5.
+
+Speaker identity models are explicit: `SpeakerIdentity`, `IdentityEvidence`, `IdentityCandidate`, `Speaker`, and `ResolutionReport`. A `Speaker` always retains its diarization cluster and a resolution status. Only `resolved` speakers may contain a selected identity. Segment speaker nullability is not changed by identity resolution.
+
+Manual mappings are authoritative per cluster. Anchor matching uses deterministic Unicode/case/punctuation/whitespace normalization and conservative fuzzy matching, with minimum anchor-strength and decision thresholds documented in the pipeline guide. Participant context constrains anchors but supplies no evidence. Conflict and ambiguity remain data rather than being collapsed to a guessed name.
 
 Word attribution aggregates temporal overlap per speaker. A unique winner must cover at least half the word and at least 60% of all candidate overlap. Exact overlap ties stay unassigned. A gap of at most 250 ms is bridged only when the nearest turns on both sides belong to the same cluster. Candidate overlaps and the selected method remain in canonical word provenance. Regular pyannote diarization, rather than its exclusive view, preserves overlapping speech.
 

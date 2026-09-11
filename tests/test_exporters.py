@@ -1,7 +1,7 @@
 import json
 
 from ihatemeetings.exporters.transcript import export_all
-from ihatemeetings.models import Speaker, Transcript, TranscriptSegment, Word
+from ihatemeetings.models import Speaker, SpeakerIdentity, Transcript, TranscriptSegment, Word
 
 
 def sample_transcript() -> Transcript:
@@ -37,7 +37,7 @@ def test_all_exporters_consume_canonical_transcript(tmp_path):
         "transcript.vtt",
     }
     payload = json.loads((tmp_path / "transcript.json").read_text())
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["segments"][0]["words"][0]["text"] == "Ciao"
     assert "UNKNOWN [?]" in (tmp_path / "transcript.md").read_text()
     assert "00:00:01,250 --> 00:00:03,500" in (tmp_path / "transcript.srt").read_text()
@@ -59,4 +59,46 @@ def test_exporters_render_diarization_clusters_without_inventing_names(tmp_path)
     assert "SPEAKER_00" in (tmp_path / "transcript.md").read_text()
     assert "[SPEAKER_00] Hello." in (tmp_path / "transcript.srt").read_text()
     assert "[SPEAKER_00] Hello." in (tmp_path / "transcript.vtt").read_text()
-    assert "Davide" not in (tmp_path / "transcript.txt").read_text()
+    assert "Partecipante inventato" not in (tmp_path / "transcript.txt").read_text()
+
+
+def test_all_human_exporters_render_only_a_resolved_display_name(tmp_path):
+    identity = SpeakerIdentity("participant-a", "Partecipante A")
+    speaker = Speaker("SPEAKER_00", identity, "resolved", 1.0, "test")
+    transcript = Transcript(
+        2.0,
+        "it",
+        0.99,
+        "sample.wav",
+        (TranscriptSegment("segment-000001", 0.1, 1.0, "Salve.", speaker=speaker),),
+        (speaker,),
+    )
+
+    export_all(transcript, tmp_path)
+
+    assert "Partecipante A" in (tmp_path / "transcript.md").read_text()
+    assert "[00:00:00] Partecipante A" in (tmp_path / "transcript.txt").read_text()
+    assert "[Partecipante A] Salve." in (tmp_path / "transcript.srt").read_text()
+    assert "[Partecipante A] Salve." in (tmp_path / "transcript.vtt").read_text()
+
+
+def test_unknown_attribution_is_not_relabelled_by_resolved_neighbor(tmp_path):
+    identity = SpeakerIdentity("participant-a", "Partecipante A")
+    speaker = Speaker("SPEAKER_00", identity, "resolved", 1.0, "test")
+    transcript = Transcript(
+        2.0,
+        "it",
+        0.99,
+        "sample.wav",
+        (
+            TranscriptSegment("segment-000001", 0.0, 0.8, "Confermato.", speaker=speaker),
+            TranscriptSegment("segment-000002", 0.8, 1.0, "Sì."),
+        ),
+        (speaker,),
+    )
+
+    export_all(transcript, tmp_path)
+
+    markdown = (tmp_path / "transcript.md").read_text()
+    assert "Partecipante A" in markdown
+    assert "UNKNOWN [?]" in markdown

@@ -1,6 +1,6 @@
 [project]
 name = "ihatemeetings"
-version = "0.4.0"
+version = "0.5.0"
 description = "Local-first intelligent meeting transcription."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -10,6 +10,7 @@ authors = [
 keywords = ["transcription", "meetings", "asr", "diarization", "local-first"]
 dependencies = [
   "faster-whisper==1.2.1",
+  "pyyaml==6.0.3",
 ]
 
 [project.optional-dependencies]

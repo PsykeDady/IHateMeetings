@@ -25,6 +25,7 @@ from ihatemeetings.errors import IHMError
 from ihatemeetings.languages import SUPPORTED_LANGUAGES
 from ihatemeetings.pipeline import run_transcription
 from ihatemeetings.platform.doctor import run_doctor
+from ihatemeetings.speakers import load_resolution_config, parse_speaker_mapping
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -138,6 +139,18 @@ def add_transcribe_arguments(parser: argparse.ArgumentParser, positional: bool =
     parser.add_argument("--min-speakers", type=_positive_int, help="Minimum expected speakers.")
     parser.add_argument("--max-speakers", type=_positive_int, help="Maximum expected speakers.")
     parser.add_argument(
+        "--speaker",
+        action="append",
+        default=[],
+        metavar='SPEAKER_NN="Name"',
+        help="Map a diarization cluster to a verified name; repeat for multiple speakers.",
+    )
+    parser.add_argument(
+        "--speaker-map",
+        type=Path,
+        help="Optional YAML file containing authoritative cluster-to-identity mappings.",
+    )
+    parser.add_argument(
         "--output-dir", type=Path, default=None, help="Output root directory (default: output)."
     )
     parser.add_argument("--config", type=Path, help="Optional configuration file.")
@@ -157,9 +170,17 @@ def handle_transcribe(args: argparse.Namespace) -> int:
     if not input_path.is_file():
         print(f"Input is not a file: {input_path}")
         return 2
-    phase2_options = [args.context, args.anchors, args.glossary]
-    if any(phase2_options):
-        print("Context, anchors and glossary processing is not supported in Phase 3.")
+    if args.glossary:
+        print("Glossary processing is not supported yet.")
+        return 2
+    try:
+        speaker_mappings = tuple(parse_speaker_mapping(value) for value in args.speaker)
+    except ValueError as exc:
+        print(f"Invalid --speaker mapping: {exc}.")
+        return 2
+    clusters = [mapping.cluster for mapping in speaker_mappings]
+    if len(clusters) != len(set(clusters)):
+        print("Each speaker cluster may be mapped only once.")
         return 2
     if args.num_speakers is not None and (
         args.min_speakers is not None or args.max_speakers is not None
@@ -177,6 +198,15 @@ def handle_transcribe(args: argparse.Namespace) -> int:
     if args.diarize is False and any(value is not None for value in speaker_hints):
         print("Speaker count hints cannot be used with --no-diarize.")
         return 2
+    resolution = load_resolution_config(
+        cli_mappings=speaker_mappings,
+        speaker_map_path=args.speaker_map,
+        anchors_path=args.anchors,
+        context_path=args.context,
+    )
+    if args.diarize is False and resolution.requested:
+        print("Speaker resolution options cannot be used with --no-diarize.")
+        return 2
 
     config = RuntimeConfig.from_sources(
         profile=args.profile,
@@ -186,11 +216,12 @@ def handle_transcribe(args: argparse.Namespace) -> int:
         compute_type=args.compute_type,
         align=args.align,
         alignment_model=args.alignment_model,
-        diarize=args.diarize,
+        diarize=True if resolution.requested else args.diarize,
         diarization_model=args.diarization_model,
         num_speakers=args.num_speakers,
         min_speakers=args.min_speakers,
         max_speakers=args.max_speakers,
+        speaker_resolution=resolution,
         output_dir=args.output_dir,
         config_file=args.config,
     )

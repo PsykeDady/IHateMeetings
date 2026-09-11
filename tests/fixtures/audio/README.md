@@ -1,10 +1,10 @@
-# Private Italian audio fixture setup
+# Italian audio fixture setup
 
-Private audio is intentionally not stored in this directory or committed to the repository.
+The three recordings currently stored in `tests/private_audio/` are explicitly authorized test fixtures and may be committed. Despite the historical directory name, they are not private meeting recordings.
 
-For local validation, place recordings and `manifest.json` in `tests/private_audio/`. That directory is ignored by Git. The manifest records expected text, stable file hashes, duration and conservative Phase 1 keywords. Exact transcript equality is intentionally not required because ASR output may vary by model and runtime.
+Do not place confidential meeting recordings in that directory or anywhere else inside the repository. Keep additional private recordings outside the repository and pass their absolute path to local commands. The fixture manifest records expected text, stable file hashes, duration and conservative Phase 1 keywords. Exact transcript equality is intentionally not required because ASR output may vary by model and runtime.
 
-The normal suite validates fixture integrity without loading an ML model. Real local inference is opt-in:
+The normal suite validates the authorized fixture integrity without loading an ML model. Real inference remains opt-in:
 
 ```bash
 uv run ihm models download tiny

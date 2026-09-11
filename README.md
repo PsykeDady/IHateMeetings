@@ -4,7 +4,7 @@
 
 IHateMeetings is a local-first meeting transcription project. The goal is a staged pipeline for media processing, speech recognition, alignment, diarization, speaker resolution, confidence analysis and auditable exports.
 
-This repository is currently at **Phase 3: Speaker diarization**. It performs local media inspection, FFmpeg audio preparation, faster-whisper inference, optional CTC word alignment, optional pyannote Community-1 speaker diarization and canonical JSON/Markdown/TXT/SRT/VTT export. Speaker identification is deliberately not part of this phase: output uses anonymous clusters such as `SPEAKER_00`.
+This repository is currently at **Phase 4: Speaker resolution**. It performs local media inspection, FFmpeg audio preparation, faster-whisper inference, optional CTC word alignment, optional pyannote Community-1 speaker diarization, conservative manual/anchor identity resolution and canonical JSON/Markdown/TXT/SRT/VTT export. Every speaker without sufficient evidence remains anonymous.
 
 ## Install for Development
 
@@ -21,7 +21,7 @@ uv run ihm meeting.mp3 --language it --align
 uv run pytest
 ```
 
-Private/local recordings may be placed in the ignored `tests/private_audio/` directory. To run the real faster-whisper regression tests locally:
+The three recordings under the historically named `tests/private_audio/` directory are explicitly authorized public test fixtures. Confidential recordings must remain outside the repository; pass their absolute path for local validation. To run the real faster-whisper regression tests locally:
 
 ```bash
 uv run ihm models download tiny
@@ -74,9 +74,33 @@ The token is read only from the environment and is not persisted by IHateMeeting
 
 IHateMeetings v1 officially supports exactly Italian (`it`) and English (`en`). Explicit selection accepts `--language it` and `--language en`; omitting the option lets faster-whisper detect the language and routes either supported result to its matching alignment model. Other languages may be recognized by faster-whisper but are unsupported and untested: automatic detection emits a warning, exports raw/canonical ASR text, and skips alignment with status `unsupported_language`. Explicit unsupported language codes are rejected.
 
-Italian speech containing English technical vocabulary is a first-class input. ASR always uses transcription rather than translation and IHateMeetings does not rewrite or Italianize terms such as `deploy`, `commit`, `merge`, `timeout`, `backend`, `frontend`, `Lambda`, `API Gateway`, `OpenSearch`, `DynamoDB`, `STAG`, `DEV` and `PROD`. The ASR contract already accepts typed glossary prompt terms for the future `glossary.yaml` stage; Phase 3 does not parse glossaries or correct transcript text.
+Italian speech containing English technical vocabulary is a first-class input. ASR always uses transcription rather than translation and IHateMeetings does not rewrite or Italianize terms such as `deploy`, `commit`, `merge`, `timeout`, `backend`, `frontend`, `Lambda`, `API Gateway`, `OpenSearch`, `DynamoDB`, `STAG`, `DEV` and `PROD`. The ASR contract already accepts typed glossary prompt terms for the future `glossary.yaml` stage; glossary processing is not implemented yet.
 
-Output is written to `output/<input-stem>/`. Raw FFprobe, ASR, alignment and diarization records remain separate in `raw/media.json`, `raw/asr.json`, `raw/alignment.json`, `raw/diarization.json` and `raw/diarization.rttm`; final exporters consume `transcript.json` schema version 3.
+Output is written to `output/<input-stem>/`. Raw FFprobe, ASR, alignment and diarization records remain separate in `raw/media.json`, `raw/asr.json`, `raw/alignment.json`, `raw/diarization.json` and `raw/diarization.rttm`; final exporters consume `transcript.json` schema version 4. Manual resolution evidence is stored separately in `debug/speaker_mapping.json`.
+
+Verified identities can be assigned explicitly. A mapping automatically requests diarization and may be repeated:
+
+```bash
+uv run ihm meeting.mp3 \
+  --speaker SPEAKER_00="Partecipante A" \
+  --speaker SPEAKER_01="Partecipante B"
+```
+
+Manual mappings have confidence `1.0` and `manual_mapping` provenance. A typo that references a cluster absent from diarization is rejected; IHateMeetings never creates or guesses that speaker. Inspect a first anonymous run when cluster IDs are not yet known. The same mappings can be supplied in YAML:
+
+```bash
+uv run ihm meeting.mp3 --speaker-map examples/speaker-map.example.yaml
+```
+
+Local textual anchors and participant context are optional:
+
+```bash
+uv run ihm meeting.mp3 \
+  --anchors examples/anchors.example.yaml \
+  --context examples/context.example.md
+```
+
+Anchors are normalized for Unicode, case, punctuation and whitespace, then matched exactly or with a conservative fuzzy threshold. Short/common anchors are ignored. Context only constrains anchor identities; it is never proof by itself. Conflicting or insufficient evidence leaves the cluster anonymous, and Phase 3 `UNKNOWN [?]` fragments are never relabelled.
 
 ## Uninstall / Cleanup
 
@@ -116,14 +140,14 @@ ihm transcribe FILE
 ihm FILE
 ```
 
-Both transcription forms run the same Phase 3 pipeline:
+Both transcription forms run the same staged pipeline:
 
 ```bash
 uv run ihm meeting.mp3 --language it --profile fast --align --diarize
 uv run ihm transcribe meeting.mp3 --language it --model small --align --diarize
 ```
 
-`--language` may be omitted for automatic detection. Custom converted CTranslate2 model directories can be supplied to `--model`. Context, anchors, speaker identification and reasoning remain unavailable in Phase 3.
+`--language` may be omitted for automatic detection. Custom converted CTranslate2 model directories can be supplied to `--model`. Glossary processing and reasoning are not implemented yet.
 
 ## Roadmap
 
@@ -131,7 +155,7 @@ uv run ihm transcribe meeting.mp3 --language it --model small --align --diarize
 2. Phase 1: complete — FFmpeg preprocessing, faster-whisper ASR, canonical JSON, Markdown/TXT/SRT/VTT export.
 3. Phase 2: complete — optional local word-level CTC alignment and schema v2.
 4. Phase 3: complete — optional local Community-1 diarization, cluster attribution and schema v3.
-5. Phase 4: manual and anchor-based speaker resolution.
+5. Phase 4: complete — typed manual/anchor resolution, participant constraints, conflicts and schema v4.
 6. Phase 5: cache/resume, confidence engine and improved hardware profiles.
 
 Core transcription must remain local-first. Network-dependent features must be explicit, and meeting audio must never be uploaded silently.

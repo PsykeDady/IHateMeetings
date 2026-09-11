@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from ihatemeetings.speakers.config import ResolutionConfig
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,7 @@ class RuntimeConfig:
     num_speakers: int | None = None
     min_speakers: int | None = None
     max_speakers: int | None = None
+    speaker_resolution: ResolutionConfig = field(default_factory=ResolutionConfig)
     output_dir: Path = Path("output")
     config_file: Path | None = None
 
@@ -40,6 +43,7 @@ class RuntimeConfig:
         num_speakers: int | None = None,
         min_speakers: int | None = None,
         max_speakers: int | None = None,
+        speaker_resolution: ResolutionConfig | None = None,
         output_dir: Path | None = None,
         config_file: Path | None = None,
     ) -> RuntimeConfig:
@@ -56,6 +60,7 @@ class RuntimeConfig:
             num_speakers=num_speakers,
             min_speakers=min_speakers,
             max_speakers=max_speakers,
+            speaker_resolution=speaker_resolution or ResolutionConfig(),
             output_dir=output_dir or Path(os.environ.get("IHM_OUTPUT_DIR", "output")),
             config_file=config_file,
         )

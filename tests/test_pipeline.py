@@ -19,8 +19,9 @@ from ihatemeetings.diarization import (
     DiarizationResult,
     DiarizationTurn,
 )
-from ihatemeetings.models import ASRResult, ASRSegment, Word
+from ihatemeetings.models import ASRResult, ASRSegment, SpeakerIdentity, Word
 from ihatemeetings.pipeline.transcribe import run_transcription
+from ihatemeetings.speakers import ManualSpeakerMapping, ResolutionConfig
 
 
 class GeneratedFixtureBackend(ASRBackend):
@@ -109,6 +110,7 @@ def test_generated_audio_runs_through_real_media_pipeline(tmp_path):
             model=str(model_dir),
             device="cpu",
             align=False,
+            diarize=False,
             output_dir=output_root,
         ),
         backend=GeneratedFixtureBackend(),
@@ -122,12 +124,12 @@ def test_generated_audio_runs_through_real_media_pipeline(tmp_path):
     assert raw["backend"] == "generated-fixture"
     assert alignment["status"] == "disabled"
     diarization = json.loads((job_dir / "raw" / "diarization.json").read_text())
-    assert diarization["status"] == "skipped"
+    assert diarization["status"] == "disabled"
     assert (job_dir / "raw" / "diarization.rttm").read_text() == ""
     assert canonical["segments"][0]["words"] == []
     assert (job_dir / "raw" / "media.json").exists()
     assert any("Preparing audio ... done" in message for message in messages)
-    assert not list(job_dir.glob(".ihm-phase3-*"))
+    assert not list(job_dir.glob(".ihm-phase4-*"))
 
 
 @pytest.mark.skipif(
@@ -232,7 +234,7 @@ def test_automatic_unsupported_language_warns_and_preserves_asr(tmp_path):
     shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
     reason="FFmpeg integration tools are unavailable",
 )
-def test_pipeline_writes_diarization_artifacts_and_schema_v3(tmp_path):
+def test_pipeline_writes_diarization_artifacts_and_schema_v4(tmp_path):
     source = tmp_path / "speakers.wav"
     with wave.open(str(source), "wb") as audio:
         audio.setnchannels(1)
@@ -267,10 +269,8 @@ def test_pipeline_writes_diarization_artifacts_and_schema_v3(tmp_path):
     assert "words" not in raw_asr["segments"][0]
     assert "speaker" not in raw_alignment["segments"][0]["words"][0]
     assert raw_diarization["backend"] == "generated-diarization"
-    assert "SPEAKER speakers 1 0.000 0.420" in (
-        job_dir / "raw" / "diarization.rttm"
-    ).read_text()
-    assert canonical["schema_version"] == 3
+    assert "SPEAKER speakers 1 0.000 0.420" in (job_dir / "raw" / "diarization.rttm").read_text()
+    assert canonical["schema_version"] == 4
     assert [speaker["cluster"] for speaker in canonical["speakers"]] == [
         "SPEAKER_00",
         "SPEAKER_01",
@@ -279,3 +279,101 @@ def test_pipeline_writes_diarization_artifacts_and_schema_v3(tmp_path):
         "SPEAKER_00",
         "SPEAKER_01",
     ]
+
+
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="FFmpeg integration tools are unavailable",
+)
+def test_pipeline_applies_manual_mapping_without_mutating_raw_diarization(tmp_path):
+    source = tmp_path / "mapped.wav"
+    with wave.open(str(source), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\x00\x00" * 16000)
+    model_dir = tmp_path / "local-model"
+    model_dir.mkdir()
+
+    job_dir = run_transcription(
+        source,
+        RuntimeConfig(
+            language="it",
+            model=str(model_dir),
+            device="cpu",
+            align=True,
+            alignment_model=str(model_dir),
+            diarize=True,
+            diarization_model=str(model_dir),
+            speaker_resolution=ResolutionConfig(
+                manual_mappings=(
+                    ManualSpeakerMapping(
+                        "SPEAKER_00",
+                        SpeakerIdentity("participant-a", "Partecipante A"),
+                    ),
+                )
+            ),
+            output_dir=tmp_path / "output",
+        ),
+        backend=GeneratedFixtureBackend(),
+        alignment_backend=GeneratedAlignmentBackend(),
+        diarization_backend=GeneratedDiarizationBackend(),
+        emit=lambda _message: None,
+    )
+
+    raw = json.loads((job_dir / "raw" / "diarization.json").read_text())
+    canonical = json.loads((job_dir / "transcript.json").read_text())
+    audit = json.loads((job_dir / "debug" / "speaker_mapping.json").read_text())
+    assert "name" not in raw["turns"][0]
+    speaker = canonical["speakers"][0]
+    assert speaker["cluster"] == "SPEAKER_00"
+    assert speaker["identity"] == {
+        "id": "participant-a",
+        "display_name": "Partecipante A",
+    }
+    assert speaker["resolution"]["confidence"] == 1.0
+    assert speaker["resolution"]["evidence"][0]["type"] == "manual_mapping"
+    assert canonical["segments"][0]["speaker"] == speaker
+    assert audit["clusters"][0] == speaker
+
+
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="FFmpeg integration tools are unavailable",
+)
+def test_no_identity_configuration_preserves_anonymous_and_unknown_speakers(tmp_path):
+    source = tmp_path / "anonymous.wav"
+    with wave.open(str(source), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\x00\x00" * 16000)
+    model_dir = tmp_path / "local-model"
+    model_dir.mkdir()
+
+    job_dir = run_transcription(
+        source,
+        RuntimeConfig(
+            language="it",
+            model=str(model_dir),
+            device="cpu",
+            align=True,
+            alignment_model=str(model_dir),
+            diarize=True,
+            diarization_model=str(model_dir),
+            output_dir=tmp_path / "output",
+        ),
+        backend=GeneratedFixtureBackend(),
+        alignment_backend=GeneratedAlignmentBackend(),
+        diarization_backend=GeneratedDiarizationBackend(),
+        emit=lambda _message: None,
+    )
+
+    canonical = json.loads((job_dir / "transcript.json").read_text())
+    audit = json.loads((job_dir / "debug" / "speaker_mapping.json").read_text())
+    assert [speaker["identity"] for speaker in canonical["speakers"]] == [None, None]
+    assert [speaker["resolution"]["status"] for speaker in canonical["speakers"]] == [
+        "unresolved",
+        "unresolved",
+    ]
+    assert audit["requested"] is False

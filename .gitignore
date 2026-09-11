@@ -1,1 +1,7 @@
 .env
+output/
+.ihm/
+speaker-profiles/
+*.voiceprint
+*.speaker-embedding
+:memory:.ses

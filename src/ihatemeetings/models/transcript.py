@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ihatemeetings.models.speaker import Speaker
+
 
 @dataclass(frozen=True)
 class MediaInfo:
@@ -106,13 +108,6 @@ class Word:
 
 
 @dataclass(frozen=True)
-class Speaker:
-    cluster: str
-    name: str | None = None
-    confidence: float | None = None
-
-
-@dataclass(frozen=True)
 class TranscriptSegment:
     id: str
     start: float
@@ -129,7 +124,7 @@ class TranscriptSegment:
             "end": self.end,
             "text": self.text,
             "words": [word.to_dict() for word in self.words],
-            "speaker": asdict(self.speaker) if self.speaker else None,
+            "speaker": self.speaker.to_dict() if self.speaker else None,
             "confidence": self.confidence,
         }
 
@@ -142,7 +137,7 @@ class Transcript:
     source: str
     segments: tuple[TranscriptSegment, ...] = field(default_factory=tuple)
     speakers: tuple[Speaker, ...] = field(default_factory=tuple)
-    schema_version: int = 3
+    schema_version: int = 4
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -153,6 +148,6 @@ class Transcript:
                 "language": self.language,
                 "language_probability": self.language_probability,
             },
-            "speakers": [asdict(speaker) for speaker in self.speakers],
+            "speakers": [speaker.to_dict() for speaker in self.speakers],
             "segments": [segment.to_dict() for segment in self.segments],
         }

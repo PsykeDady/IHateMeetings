@@ -1,0 +1,5 @@
+speakers:
+  SPEAKER_00:
+    id: partecipante-a
+    name: Partecipante A
+  SPEAKER_01: Partecipante B

@@ -119,7 +119,7 @@ def test_transcript_reconstruction_creates_cluster_turns_without_changing_words(
 
     transcript = _build_transcript(1.0, "it", 0.99, "meeting.wav", (segment,), diarization)
 
-    assert transcript.schema_version == 3
+    assert transcript.schema_version == 4
     assert [item.text for item in transcript.segments] == ["Ciao", "iniziamo"]
     assert [item.speaker.cluster for item in transcript.segments] == [
         "SPEAKER_00",

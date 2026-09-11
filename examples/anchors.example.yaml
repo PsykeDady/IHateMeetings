@@ -1,20 +1,9 @@
-meeting:
-  date: 2026-08-26
-
 speakers:
-  Federica Orsini:
-    first_speaker: true
-  Giovanni Taranto:
-    responds_to_first_speaker: true
-  Sonia Greco:
-    phrases:
-      - "pero Fede voglio aggiungere solo una cosa"
-  Davide:
-    semantic_hints:
-      - "promuovero in STAG"
-      - "modifiche aggiornate"
-      - "stasera"
-  Andrea Berardis:
-    phrases:
-      - "io stamattina ho fatto un giro con Davide"
-
+  - id: partecipante-a
+    name: Partecipante A
+    anchors:
+      - "la migrazione del database inizierà dopo il controllo finale"
+  - id: partecipante-b
+    name: Partecipante B
+    anchors:
+      - "questa seconda frase tecnica è intenzionalmente molto specifica"

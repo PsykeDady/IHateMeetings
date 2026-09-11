@@ -58,3 +58,16 @@ Upstream references:
 - https://huggingface.co/pyannote/speaker-diarization-community-1
 - https://docs.pytorch.org/audio/main/installation.html
 - https://github.com/meta-pytorch/torchcodec#installing-torchcodec
+
+## Phase 4 speaker resolution
+
+Manual mapping, participant context and textual anchor matching use typed local code and the Python standard library. `PyYAML==6.0.3` is a small direct runtime dependency used only to parse explicit local configuration files; it performs no network access.
+
+The installed `pyannote.audio==4.0.7` exposes generic `Model` and `Inference` APIs and speaker-verification abstractions. The official gated `pyannote/embedding` model card documents whole-file/cropped speaker embeddings and cosine comparison, but targets pyannote.audio 2.1. It is a separate gated model, is not included in Community-1 acquisition, and reliable identity thresholds would require controlled enrollment samples plus cross-device/noise benchmarks. Phase 4 therefore adds a `VoiceEmbeddingBackend` interface and private local storage design without exposing an unvalidated voice matcher. No large ML dependency or model download was added.
+
+Upstream references:
+
+- https://github.com/yaml/pyyaml
+- https://github.com/pyannote/pyannote-audio
+- https://github.com/pyannote/pyannote-audio/blob/main/src/pyannote/audio/pipelines/speaker_verification.py
+- https://huggingface.co/pyannote/embedding
